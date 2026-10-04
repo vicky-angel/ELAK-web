@@ -1184,7 +1184,7 @@
         <input id="patient-pass" type="password" autocomplete="current-password" required>
       </div>
       <div class="field">
-        <label for="patient-code">Phone code</label>
+        <label for="patient-code">Code</label>
         <input id="patient-code" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="6 letters from the clinician page">
       </div>
       <label class="remember" for="patient-remember">
@@ -1553,7 +1553,7 @@
 <p id="live" class="sr" aria-live="polite"></p>
 <video id="cam" playsinline muted hidden></video>
 
-<script src="shared.js?v=88"></script>
+<script src="shared.js?v=89"></script>
 <script src="calendar-plugin.js?v=96"></script>
 <script src="agent.js?v=92"></script>
 <script src="kale-config.js?v=1"></script>
@@ -5248,11 +5248,11 @@ function wire() {
       const result = await signInPatient($("patient-user").value, $("patient-pass").value, $("patient-remember").checked, $("patient-cal-consent") && $("patient-cal-consent").checked, $("patient-code") && $("patient-code").value);
       if (!result || !result.ok) {
         $("patient-error").textContent = result && result.reason === "need-code"
-          ? "This phone does not have that account yet. Enter the 6-letter phone code from the clinician page."
+          ? "This device does not have that account yet. Enter the 6-letter code from the clinician page."
           : result && result.reason === "code-mismatch"
-            ? "That phone code belongs to a different username."
+            ? "That code belongs to a different username."
           : result && result.reason === "unknown"
-            ? "This phone does not have that account yet. Enter the 6-letter phone code from the clinician page."
+            ? "This device does not have that account yet. Enter the 6-letter code from the clinician page."
           : result && result.reason === "no-pass"
             ? "This account is not ready. Ask your physiotherapist to set a password."
             : "That username and password don't match. Use the username your physiotherapist created.";

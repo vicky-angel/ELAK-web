@@ -92,7 +92,7 @@ function syncClinicPanels() {
   if ($c("clinic-switch-login")) $c("clinic-switch-login").hidden = archived;
   if ($c("account-summary-line")) {
     $c("account-summary-line").textContent = hasLogin
-      ? plan.username + " · phone code " + plan.code
+      ? plan.username + " · code " + plan.code
       : "";
   }
   if ($c("account-box")) {
@@ -825,8 +825,8 @@ function noteSavedLogin(username, passwordChanged) {
   if ($c("clinic-copy")) $c("clinic-copy").textContent = "Copy username";
   if ($c("clinic-pass-note")) {
     $c("clinic-pass-note").textContent = passwordChanged
-      ? "Password saved. On a new phone they sign in with " + username + ", that password, and phone code " + (clinic.code || "") + "."
-      : "This patient signs in as " + username + (clinic.code ? " · phone code " + clinic.code : "") + ".";
+      ? "Password saved. On another device they sign in with " + username + ", that password, and code " + (clinic.code || "") + "."
+      : "This patient signs in as " + username + (clinic.code ? " · code " + clinic.code : "") + ".";
   }
   if ($c("clinic-pass")) $c("clinic-pass").value = "";
   if ($c("clinic-pass-confirm")) $c("clinic-pass-confirm").value = "";

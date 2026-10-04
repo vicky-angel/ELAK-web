@@ -754,11 +754,11 @@ function paintRoleCalendar(root, status, role, plan) {
     status.textContent = n ? (n + (n === 1 ? " event" : " events")) : "No calendar events yet.";
   }
   if (!window.ELAK_CAL_DAY) {
-    window.ELAK_CAL_DAY = typeof dayKey === "function" ? dayKey(new Date()) : new Date().toISOString().slice(0, 10);
+    const today = typeof dayKey === "function" ? dayKey(new Date()) : new Date().toISOString().slice(0, 10);
+    window.ELAK_CAL_DAY = today;
   }
   if (root && typeof calendarSummary === "function") {
     const events = dedupeCalendarEvents(calendarSummary(fake, who), plan || fake, who);
-    window.ELAK_CAL_DAY = nearestEventDay(events, window.ELAK_CAL_DAY);
     const stamp = (window.ELAK_CAL_DAY || "") + "|" + calendarEventStamp(events);
     if (root.dataset.calStamp === stamp) return;
     root.dataset.calStamp = stamp;

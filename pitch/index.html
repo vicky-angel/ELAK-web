@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ELAK — Pitch</title>
+<link rel="preconnect" href="https://api.fontshare.com">
+<link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600&display=swap" rel="stylesheet">
+<style>
+/* === THEME ===
+   Rice-paper field from the product site (#f4efe4).
+   One ink, one leaf accent, no cards. Change these to recolor the deck. */
+:root {
+    --stage-bg: #e7e0d2;
+    --slide-bg: #f4efe4;
+    --ink: #1d1d1f;
+    --muted: #6e675e;
+    --leaf: #5f7d62;
+    --line: rgba(29, 29, 31, 0.16);
+    --font: "Switzer", "Avenir Next", sans-serif;
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* { box-sizing: border-box; }
+button { font: inherit; color: inherit; background: none; border: 0; }
+
+/* === VIEWPORT BASE === */
+/* ===========================================
+   FIXED 16:9 STAGE: MANDATORY BASE STYLES
+   Include this ENTIRE file in every presentation.
+   Slides are authored at 1920×1080 and scaled as a whole.
+   =========================================== */
+
+/* 1. Lock the browser viewport */
+html,
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+/* 2. Full-window deck viewport */
+.deck-viewport {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+/* 3. Fixed 16:9 design canvas.
+   JavaScript sets transform: translate(...) scale(...). */
+.deck-stage {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    transform-origin: 0 0;
+    background: var(--slide-bg, #fff);
+}
+
+/* 4. Slides stack inside the fixed stage.
+   Content must be laid out at 1920×1080, not reflowed per device. */
+.slide {
+    position: absolute;
+    inset: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    display: block;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    background: var(--slide-bg, #fff);
+}
+
+.slide.active,
+.slide.visible {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 1;
+}
+
+/* 5. Keep media inside authored slide bounds */
+img,
+video,
+canvas,
+svg {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* 6. Presentation chrome stays outside the slide design system */
+.deck-controls {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    z-index: 1000;
+}
+
+/* 7. Print one fixed-size slide per page */
+@media print {
+    html,
+    body {
+        width: 1920px;
+        height: auto;
+        overflow: visible;
+        background: #fff;
+    }
+
+    .deck-viewport {
+        position: static;
+        overflow: visible;
+        background: #fff;
+    }
+
+    .deck-stage {
+        position: static;
+        width: auto;
+        height: auto;
+        transform: none !important;
+        background: none;
+    }
+
+    .slide {
+        position: relative;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        width: 1920px;
+        height: 1080px;
+        break-after: page;
+        page-break-after: always;
+    }
+
+    .slide:last-child {
+        break-after: auto;
+        page-break-after: auto;
+    }
+
+    .deck-controls {
+        display: none !important;
+    }
+}
+
+/* 8. Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.2s !important;
+    }
+}
+
+/* === CHROME ===
+   Logo stays top-left on every slide. Section name sits top-right. */
+.chrome {
+    position: absolute;
+    left: 80px;
+    right: 80px;
+    top: 44px;
+    height: 108px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.chrome img {
+    width: auto;
+    height: 96px;
+    max-height: 96px;
+    object-fit: contain;
+    object-position: left center;
+}
+.sec {
+    font-family: var(--font);
+    font-size: 20px;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+/* === TYPE === */
+.slide { color: var(--ink); font-family: var(--font); }
+h1, h2, p { margin: 0; font-weight: 500; }
+.hero, .statement, .cols, .split, .rows, .pair, .people {
+    position: absolute;
+    left: 80px;
+    right: 80px;
+}
+.hero { top: 340px; }
+h1 {
+    font-size: 148px;
+    line-height: 0.92;
+    letter-spacing: -0.045em;
+    font-weight: 500;
+}
+.dek {
+    margin-top: 36px;
+    max-width: 1100px;
+    font-size: 40px;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+    font-weight: 400;
+}
+.meta {
+    position: absolute;
+    left: 80px;
+    bottom: 72px;
+    font-size: 22px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+}
+.statement { top: 300px; max-width: 1500px; }
+h2 {
+    font-size: 84px;
+    line-height: 1.02;
+    letter-spacing: -0.038em;
+    font-weight: 500;
+    max-width: 1500px;
+}
+.support {
+    margin-top: 28px;
+    max-width: 1100px;
+    font-size: 32px;
+    line-height: 1.35;
+    font-weight: 400;
+    color: var(--muted);
+}
+.statement .support:first-of-type { margin-top: 40px; }
+
+/* === THREE COLUMNS === */
+.cols {
+    top: 280px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 64px;
+}
+.cols h2 { font-size: 64px; max-width: none; margin-bottom: 64px; grid-column: 1 / -1; }
+.cols article h3 {
+    margin: 0 0 18px;
+    font-size: 22px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--leaf);
+}
+.cols article p {
+    font-size: 32px;
+    line-height: 1.3;
+    letter-spacing: -0.02em;
+    font-weight: 400;
+}
+
+/* === SPLIT === */
+.split {
+    top: 280px;
+    display: grid;
+    grid-template-columns: 1fr 1px 1fr;
+    gap: 72px;
+    align-items: start;
+}
+.split h2 { grid-column: 1 / -1; margin-bottom: 20px; }
+.rule { background: var(--line); align-self: stretch; margin-top: 12px; }
+.split h3 {
+    margin: 28px 0 16px;
+    font-size: 40px;
+    letter-spacing: -0.03em;
+    font-weight: 500;
+}
+.split p { font-size: 28px; line-height: 1.4; color: var(--muted); font-weight: 400; max-width: 640px; }
+
+/* === ROWS === */
+.rows { top: 250px; }
+.rows h2 { margin-bottom: 48px; }
+.row {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 40px;
+    align-items: baseline;
+    padding: 22px 0;
+    border-top: 1px solid var(--line);
+    font-size: 34px;
+    letter-spacing: -0.02em;
+}
+.row:last-child { border-bottom: 1px solid var(--line); }
+.row b { font-weight: 500; }
+.row span { color: var(--muted); font-weight: 400; }
+.row.us b, .row.us span { color: var(--ink); }
+.row.us b { color: var(--leaf); }
+
+/* === PAIR === */
+.pair {
+    top: 280px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 100px;
+}
+.pair h2 { grid-column: 1 / -1; }
+.pair h3 {
+    margin: 48px 0 20px;
+    font-size: 22px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--leaf);
+    font-weight: 500;
+}
+.pair li {
+    font-size: 34px;
+    line-height: 1.35;
+    letter-spacing: -0.02em;
+    margin: 0 0 18px;
+    font-weight: 400;
+}
+.pair ul { margin: 0; padding: 0; list-style: none; }
+
+/* === METRICS === */
+.metrics {
+    position: absolute;
+    left: 80px;
+    right: 80px;
+    top: 460px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 80px;
+}
+.metrics p {
+    margin: 0;
+    padding: 18px 0;
+    border-top: 1px solid var(--line);
+    font-size: 34px;
+    letter-spacing: -0.02em;
+    font-weight: 400;
+}
+
+/* === PEOPLE / OPEN LINES === */
+.people { top: 280px; }
+.people h2 { margin-bottom: 36px; }
+.person, .open {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 32px;
+    padding: 26px 0;
+    border-top: 1px solid var(--line);
+    font-size: 40px;
+    letter-spacing: -0.03em;
+}
+.person:last-child, .open:last-child { border-bottom: 1px solid var(--line); }
+.person span, .open span { color: var(--muted); font-weight: 400; }
+
+/* === REVEAL ===
+   Calm fade. .visible on the active slide starts it. */
+.reveal {
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity 0.7s var(--ease), transform 0.7s var(--ease);
+}
+.slide.visible .reveal { opacity: 1; transform: none; }
+.d1 { transition-delay: 0.05s; }
+.d2 { transition-delay: 0.14s; }
+.d3 { transition-delay: 0.24s; }
+.d4 { transition-delay: 0.34s; }
+.d5 { transition-delay: 0.44s; }
+
+/* === PAGER === */
+.deck-controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    color: var(--muted);
+    font-family: var(--font);
+    font-size: 13px;
+    letter-spacing: 0.14em;
+}
+.track {
+    width: 120px;
+    height: 2px;
+    background: rgba(29, 29, 31, 0.15);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.track i {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--leaf);
+}
+
+/* === INLINE EDIT ===
+   Visibility is JS-only. A CSS sibling hover breaks because
+   pointer-events: none drops the hover chain. */
+.edit-hotzone {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 80px;
+    height: 80px;
+    z-index: 10000;
+    cursor: pointer;
+}
+.edit-toggle {
+    position: fixed;
+    top: 18px;
+    left: 18px;
+    z-index: 10001;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(255, 250, 242, 0.92);
+    color: var(--ink);
+    font-size: 16px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    box-shadow: 0 1px 0 rgba(29, 29, 31, 0.08);
+}
+.edit-toggle.show,
+.edit-toggle.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+body.editing [data-edit] {
+    outline: 1px dashed rgba(95, 125, 98, 0.55);
+    outline-offset: 4px;
+    cursor: text;
+}
+</style>
+</head>
+<body>
+<div class="deck-viewport">
+<main class="deck-stage" id="deckStage">
+
+<!-- Speaker: name the company, then the sentence. Do not explain the product yet. -->
+<section class="slide">
+    <header class="chrome">
+        <img src="assets/elak-logo.png" alt="ELAK">
+        <span class="sec" data-edit="s1-sec">Pitch</span>
+    </header>
+    <div class="hero">
+        <h1 class="reveal d1" data-edit="s1-title">ELAK</h1>
+        <p class="dek reveal d2" data-edit="s1-dek">Closed-loop ankle rehab.</p>
+        <p class="dek reveal d3" data-edit="s1-line">The clinic writes the set. Home practice comes back as evidence.</p>
+    </div>
+    <p class="meta reveal d4" data-edit="s1-meta">SCPKU · October 2026</p>
+</section>
+
+<!-- Speaker: the gap is the days between visits, not "rehab is hard." -->
+<section class="slide">
+    <header class="chrome">
+        <img src="assets/elak-logo.png" alt="">
+        <span class="sec" data-edit="s2-sec">Problem</span>
+    </header>
+    <div class="statement">
+        <h2 class="reveal d1" data-edit="s2-h">The days between visits are invisible.</h2>
+        <p class="support reveal d2" data-edit="s2-p">An ankle program leaves on paper. What comes back is a story.</p>
+    </div>
+</section>
+
+<!-- Speaker: three failures, then stop. The third is the substitute. -->
+<section class="slide">
+    <header class="chrome">
+        <img src="assets/elak-logo.png" alt="">
+        <span class="sec" data-edit="s3-sec">Problem</span>
+    </header>
+    <div class="cols">
+        <h2 class="reveal d1" data-edit="s3-h">The record never makes the trip.</h2>
+        <article class="reveal d2">
+            <h3 data-edit="s3-a-k">Now</h3>
+            <p data-edit="s3-a">A handout, practised alone, reported from memory.</p>
+        </article>
+        <article class="reveal d3">
+            <h3 data-edit="s3-b-k">Why it fails</h3>
+            <p data-edit="s3-b">Missed days and a difficult ankle look the same in a self-report.</p>
+        </article>
+        <article class="reveal d4">
+            <h3 data-edit="s3-c-k">Substitutes</h3>
+            <p data-edit="s3-c">A video library is not the set written in this visit.</p>
+        </article>
+    </div>
+</section>
+
+<!-- Speaker: walk the three columns left to right. That is the product. -->
+<section class="slide">
+    <header class="chrome">
+        <img src="assets/elak-logo.png" alt="">
+        <span class="sec" data-edit="s4-sec">Solution</span>
+    </header>
+    <div class="cols">
+        <h2 class="reveal d1" data-edit="s4-h">One set. Both rooms.</h2>
+        <article class="reveal d2">
+            <h3 data-edit="s4-a-k">Clinic</h3>
+            <p data-edit="s4-a">After treatment, the physiotherapist saves the ankle set.</p>
+        </article>
+        <article class="reveal d3">
+            <h3 data-edit="s4-b-k">Home</h3>
+            <p data-edit="s4-b">The patient practises that set. Posture is scored on the device.</p>
+        </article>
+        <article class="reveal d4">
+            <h3 data-edit="s4-c-k">Next visit</h3>
+            <p data-edit="s4-c">Adherence and gait are on the desk before the appointment.</p>
+        </article>
+    </div>
+</section>
+
+<!-- Speaker: stress "this visit," not a content library. -->
+<section class="slide">
+    <header class="chrome">
+        <img src="assets/elak-logo.png" alt="">
+        <span class="sec" data-edit="s5-sec">Technology</span>
+    </header>
+    <div class="statement">
+        <h2 class="reveal d1" data-edit="s5-h">It only plays the set just written.</h2>
+        <p class="support reveal d2" data-edit="s5-p">The patient does not browse a library. The program is the one saved after treatment.</p>
+    </div>
+</section>
+
+<!-- Speaker: offer the demo here. Two modes, both ankle only. -->
+<section class="slide">
+    <header class="chrome">
+        <img src="assets/elak-logo.png" alt="">
+        <span class="sec" data-edit="s6-sec">Technology</span>
+    </header>
+    <div class="split">
+        <h2 class="reveal d1" data-edit="s6-h">Two ways to practise.</h2>
+        <div class="reveal d2">
+            <h3 data-edit="s6-a-h">Follow the clip</h3>
+            <p data-edit="s6-a">Copy the teaching video. Hold through the movement. Release on the way back.</p>
+        </div>
+        <div class="rule" aria-hidden="true"></div>
+        <div class="reveal d3">
+            <h3 data-edit="s6-b-h">Camera check</h3>
+            <p data-edit="s6-b">The camera stays on the person who starts. A rep counts when the ankle posture matches. The video stays on the device.</p>
+        </div>
+    </div>
+</section>
+
+<!-- Speaker: read three, not all six, unless they ask. Adherence is separate from the ankle. -->
+<section class="slide">
+    <header class="chrome">
+        <img src="assets/elak-logo.png" alt="">
+        <span class="sec" data-edit="s7-sec">Technology</span>
+    </header>
+    <div class="statement" style="top: 240px;">
+        <h2 class="reveal d1" data-edit="s7-h">What returns to the clinic.</h2>
+        <p class="support reveal d2" data-edit="s7-p">Missed sessions stay separate from how the ankle is moving.</p>
+    </div>
+    <div class="metrics">
+        <p class="reveal d3" data-edit="s7-m1">Gait asymmetry</p>
+        <p class="reveal d3" data-edit="s7-m2">Double support</p>
+        <p class="reveal d4" data-edit="s7-m3">Walking speed</p>
+        <p class="reveal d4" data-edit="s7-m4">Plantar pressure share</p>
+        <p class="reveal d5" data-edit="s7-m5">Cadence</p>
+        <p class="reveal d5" data-edit="s7-m6">Adherence</p>
+    </div>
+</section>
+
+<!-- Speaker: do not name companies you have not studied. Categories are enough. -->
+<section class="slide">
+    <header class="chrome">
+        <img src="assets/elak-logo.png" alt="">
+        <span class="sec" data-edit="s8-sec">Competition</span>
+    </header>
+    <div class="rows">
+        <h2 class="reveal d1" data-edit="s8-h">Most options end at the door.</h2>
+        <div class="row reveal d2"><b data-edit="s8-a">Handout</b><span data-edit="s8-a2">Easy to give. Gone once they leave.</span></div>
+        <div class="row reveal d3"><b data-edit="s8-b">Exercise apps</b><span data-edit="s8-b2">A library. Not this patient's set.</span></div>
+        <div class="row reveal d4"><b data-edit="s8-c">The next visit</b><span data-edit="s8-c2">A conversation about days nobody recorded.</span></div>
+        <div class="row us reveal d5"><b data-edit="s8-d">ELAK</b><span data-edit="s8-d2">The set, scored at home, back before the visit.</span></div>
+    </div>
+</section>
+
+<!-- Speaker: buyer is the clinic. Do not invent a price. -->
+<section class="slide">
+    <header class="chrome">
+        <img src="assets/elak-logo.png" alt="">
+        <span class="sec" data-edit="s9-sec">Business model</span>
+    </header>
+    <div class="statement">
+        <h2 class="reveal d1" data-edit="s9-h">The clinic is the customer.</h2>
+        <p class="support reveal d2" data-edit="s9-p">The therapist writes the program and needs the record.</p>
+        <p class="support reveal d3" data-edit="s9-q">The patient practises. They are not the buyer.</p>
+        <p class="support reveal d4" data-edit="s9-r">Not a payer sale. Not a consumer app.</p>
+    </div>
+</section>
+
+<!-- Speaker: say the real names. These three lines are blanks. -->
+<section class="slide">
+    <header class="chrome">
+        <img src="assets/elak-logo.png" alt="">
+        <span class="sec" data-edit="s10-sec">Team</span>
+    </header>
+    <div class="people">
+        <h2 class="reveal d1" data-edit="s10-h">Who is in the room.</h2>
+        <div class="person reveal d2"><b data-edit="s10-n1">Name</b><span data-edit="s10-r1">Role</span></div>
+        <div class="person reveal d3"><b data-edit="s10-n2">Name</b><span data-edit="s10-r2">Role</span></div>
+        <div class="person reveal d4"><b data-edit="s10-n3">Name</b><span data-edit="s10-r3">Role</span></div>
+        <div class="person reveal d5"><b data-edit="s10-n4">Name</b><span data-edit="s10-r4">Advisor</span></div>
+    </div>
+</section>
+
+<!-- Speaker: only if they ask. Do not volunteer the blanks as a weakness. -->
+<section class="slide">
+    <header class="chrome">
+        <img src="assets/elak-logo.png" alt="">
+        <span class="sec" data-edit="s11-sec">Backup</span>
+    </header>
+    <div class="statement">
+        <h2 class="reveal d1" data-edit="s11-h">If they ask.</h2>
+        <p class="support reveal d2" data-edit="s11-p">Scope, and the questions we still owe an answer.</p>
+    </div>
+</section>
+
+<!-- Speaker: read the right column if a judge asks whether this is medical advice. -->
+<section class="slide">
+    <header class="chrome">
+        <img src="assets/elak-logo.png" alt="">
+        <span class="sec" data-edit="s12-sec">Backup</span>
+    </header>
+    <div class="pair">
+        <h2 class="reveal d1" data-edit="s12-h">What the loop is.</h2>
+        <div class="reveal d2">
+            <h3 data-edit="s12-a-k">This is</h3>
+            <ul>
+                <li data-edit="s12-a1">The ankle set from this visit, practised at home.</li>
+                <li data-edit="s12-a2">Video that stays on the device.</li>
+                <li data-edit="s12-a3">Adherence kept apart from the ankle.</li>
+            </ul>
+        </div>
+        <div class="reveal d3">
+            <h3 data-edit="s12-b-k">This is not</h3>
+            <ul>
+                <li data-edit="s12-b1">A diagnosis.</li>
+                <li data-edit="s12-b2">A personal prescription.</li>
+                <li data-edit="s12-b3">A reason to push through pain, dizziness, or numbness.</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<!-- Speaker: answer only the one they ask. Do not invent a market number. -->
+<section class="slide">
+    <header class="chrome">
+        <img src="assets/elak-logo.png" alt="">
+        <span class="sec" data-edit="s13-sec">Backup</span>
+    </header>
+    <div class="people">
+        <h2 class="reveal d1" data-edit="s13-h">Still ours to answer.</h2>
+        <div class="open reveal d2"><b data-edit="s13-a">Market</b><span data-edit="s13-a2">Outpatient clinics sending ankle sets home.</span></div>
+        <div class="open reveal d3"><b data-edit="s13-b">Price</b><span data-edit="s13-b2">What that practice will pay.</span></div>
+        <div class="open reveal d4"><b data-edit="s13-c">First clinic</b><span data-edit="s13-c2">Named, and why they would start.</span></div>
+        <div class="open reveal d5"><b data-edit="s13-d">90 days</b><span data-edit="s13-d2">The first loop running on a real schedule.</span></div>
+    </div>
+</section>
+
+<!-- Speaker: stop. Do not add a thank-you. -->
+<section class="slide">
+    <header class="chrome">
+        <img src="assets/elak-logo.png" alt="ELAK">
+        <span class="sec" data-edit="s14-sec">ELAK</span>
+    </header>
+    <div class="statement">
+        <h2 class="reveal d1" data-edit="s14-h">The clinic writes the set.</h2>
+        <p class="support reveal d2" data-edit="s14-p">Home practice comes back as evidence.</p>
+    </div>
+</section>
+
+</main>
+</div>
+
+<div class="deck-controls" aria-hidden="true">
+    <div class="track"><i id="bar"></i></div>
+    <span id="pager">1 / 14</span>
+</div>
+<div class="edit-hotzone" aria-hidden="true"></div>
+<button class="edit-toggle" id="editToggle" type="button" title="Edit (E)">✎</button>
+
+<script>
+/* === STAGE + NAV ===
+   The 1920×1080 stage scales as a whole. Arrow keys, space, swipe. */
+class SlidePresentation {
+    constructor() {
+        this.slides = Array.from(document.querySelectorAll(".slide"));
+        this.stage = document.getElementById("deckStage");
+        this.pager = document.getElementById("pager");
+        this.bar = document.getElementById("bar");
+        this.current = 0;
+        this.lock = false;
+        const fromHash = parseInt((location.hash || "").replace("#", ""), 10);
+        this.setupStageScale();
+        this.setupKeyboardNav();
+        this.setupTouchNav();
+        this.setupWheel();
+        this.showSlide(Number.isFinite(fromHash) ? fromHash - 1 : 0);
+    }
+
+    setupStageScale() {
+        const scale = () => {
+            const factor = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+            const x = (window.innerWidth - 1920 * factor) / 2;
+            const y = (window.innerHeight - 1080 * factor) / 2;
+            this.stage.style.transform = "translate(" + x + "px, " + y + "px) scale(" + factor + ")";
+        };
+        scale();
+        window.addEventListener("resize", scale);
+    }
+
+    setupKeyboardNav() {
+        document.addEventListener("keydown", (e) => {
+            if (e.target && e.target.isContentEditable) return;
+            if (document.body.classList.contains("editing") && (e.key === " " || e.key === "e" || e.key === "E")) return;
+            if (["ArrowRight", "ArrowDown", "PageDown", " "].includes(e.key)) {
+                e.preventDefault();
+                this.showSlide(this.current + 1);
+            } else if (["ArrowLeft", "ArrowUp", "PageUp"].includes(e.key)) {
+                e.preventDefault();
+                this.showSlide(this.current - 1);
+            } else if (e.key === "Home") {
+                this.showSlide(0);
+            } else if (e.key === "End") {
+                this.showSlide(this.slides.length - 1);
+            }
+        });
+    }
+
+    setupTouchNav() {
+        let x0 = null;
+        document.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+        document.addEventListener("touchend", (e) => {
+            if (x0 == null) return;
+            const dx = e.changedTouches[0].clientX - x0;
+            if (Math.abs(dx) > 50) this.showSlide(this.current + (dx < 0 ? 1 : -1));
+            x0 = null;
+        }, { passive: true });
+    }
+
+    setupWheel() {
+        document.addEventListener("wheel", (e) => {
+            if (this.lock || document.body.classList.contains("editing")) return;
+            if (Math.abs(e.deltaY) < 20) return;
+            this.lock = true;
+            this.showSlide(this.current + (e.deltaY > 0 ? 1 : -1));
+            setTimeout(() => { this.lock = false; }, 700);
+        }, { passive: true });
+    }
+
+    showSlide(index) {
+        this.current = Math.max(0, Math.min(index, this.slides.length - 1));
+        this.slides.forEach((slide, i) => {
+            const on = i === this.current;
+            slide.classList.toggle("active", on);
+            slide.classList.toggle("visible", on);
+        });
+        this.pager.textContent = (this.current + 1) + " / " + this.slides.length;
+        this.bar.style.width = ((this.current + 1) / this.slides.length * 100) + "%";
+        history.replaceState(null, "", "#" + (this.current + 1));
+    }
+}
+
+/* === INLINE EDIT ===
+   Hover the top-left corner or press E. Click text, then Ctrl/Cmd+S to download. */
+class Editor {
+    constructor() {
+        this.isActive = false;
+        this.key = "elak-pitch-v1";
+        this.nodes = Array.from(document.querySelectorAll("[data-edit]"));
+        this.restore();
+        this.nodes.forEach((n) => n.addEventListener("input", () => this.save()));
+    }
+
+    toggleEditMode() {
+        this.isActive = !this.isActive;
+        document.body.classList.toggle("editing", this.isActive);
+        this.nodes.forEach((n) => { n.contentEditable = this.isActive ? "true" : "false"; });
+        document.getElementById("editToggle").classList.toggle("active", this.isActive);
+    }
+
+    snapshot() {
+        const data = {};
+        this.nodes.forEach((n) => { data[n.dataset.edit] = n.innerHTML; });
+        return data;
+    }
+
+    save() {
+        localStorage.setItem(this.key, JSON.stringify(this.snapshot()));
+    }
+
+    restore() {
+        const raw = localStorage.getItem(this.key);
+        if (!raw) return;
+        try {
+            const data = JSON.parse(raw);
+            this.nodes.forEach((n) => {
+                if (Object.prototype.hasOwnProperty.call(data, n.dataset.edit)) n.innerHTML = data[n.dataset.edit];
+            });
+        } catch (err) { /* keep the file copy if storage is unreadable */ }
+    }
+
+    download() {
+        const was = this.isActive;
+        if (was) this.toggleEditMode();
+        const html = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+        a.download = "elak-pitch.html";
+        a.click();
+        if (was) this.toggleEditMode();
+    }
+}
+
+const deck = new SlidePresentation();
+const editor = new Editor();
+
+const editToggle = document.getElementById("editToggle");
+const hotzone = document.querySelector(".edit-hotzone");
+let hideTimeout = null;
+editToggle.addEventListener("click", () => editor.toggleEditMode());
+hotzone.addEventListener("mouseenter", () => {
+    clearTimeout(hideTimeout);
+    editToggle.classList.add("show");
+});
+hotzone.addEventListener("mouseleave", () => {
+    hideTimeout = setTimeout(() => {
+        if (!editor.isActive) editToggle.classList.remove("show");
+    }, 400);
+});
+editToggle.addEventListener("mouseenter", () => clearTimeout(hideTimeout));
+editToggle.addEventListener("mouseleave", () => {
+    hideTimeout = setTimeout(() => {
+        if (!editor.isActive) editToggle.classList.remove("show");
+    }, 400);
+});
+hotzone.addEventListener("click", () => editor.toggleEditMode());
+document.addEventListener("keydown", (e) => {
+    if ((e.key === "e" || e.key === "E") && !(e.target && e.target.getAttribute && e.target.getAttribute("contenteditable") === "true") && !e.metaKey && !e.ctrlKey) {
+        editor.toggleEditMode();
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        editor.save();
+        editor.download();
+    }
+});
+</script>
+</body>
+</html>

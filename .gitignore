@@ -4,6 +4,7 @@
 !.env.example
 *.key
 secrets.json
+*.local.js
 
 # Local frontend config containing API keys (create from *.example.js)
 **/config.local.js
@@ -38,3 +39,11 @@ venv/
 # ── Generated data (keep raw dataset only) ─────
 output/
 data/*.generated.json
+data/device-calendar-live.json
+data/device-calendar-write.json
+data/device-calendar-posted.json
+data/device-calendar-archived.json
+data/google-token.json
+elak-store.json
+elak-store.json.tmp
+kale-api/elak-store.json

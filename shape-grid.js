@@ -74,19 +74,28 @@ function mountShapeGrid(container, options = {}) {
     }
   };
 
+  let tick = 0;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
   const step = () => {
     raf = 0;
     if (!alive) return;
-    const pace = Math.max(speed, 0);
-    if (pace > 0 && (direction === 'right' || direction === 'diagonal')) {
-      gridOffset.x = (gridOffset.x - pace + squareSize) % squareSize;
-    } else if (pace > 0 && direction === 'left') {
-      gridOffset.x = (gridOffset.x + pace + squareSize) % squareSize;
-    }
-    if (pace > 0 && (direction === 'down' || direction === 'diagonal')) {
-      gridOffset.y = (gridOffset.y - pace + squareSize) % squareSize;
-    } else if (pace > 0 && direction === 'up') {
-      gridOffset.y = (gridOffset.y + pace + squareSize) % squareSize;
+    tick += 1;
+    const pace = reduceMotion ? 0 : Math.max(speed, 0);
+    if (pace > 0) {
+      const sway = Math.sin(tick * 0.01);
+      const dx = pace * (0.75 + sway * 0.35);
+      const dy = pace * (0.55 - sway * 0.25);
+      if (direction === 'right' || direction === 'diagonal') {
+        gridOffset.x = (gridOffset.x - dx + squareSize) % squareSize;
+      } else if (direction === 'left') {
+        gridOffset.x = (gridOffset.x + dx + squareSize) % squareSize;
+      }
+      if (direction === 'down' || direction === 'diagonal') {
+        gridOffset.y = (gridOffset.y - dy + squareSize) % squareSize;
+      } else if (direction === 'up') {
+        gridOffset.y = (gridOffset.y + dy + squareSize) % squareSize;
+      }
     }
     updateCellOpacities();
     drawGrid();
@@ -134,7 +143,12 @@ function mountShapeGrid(container, options = {}) {
     if (!event.relatedTarget) onPointerLeave();
   });
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && !raf) raf = requestAnimationFrame(step);
+    if (document.hidden) {
+      cancelAnimationFrame(raf);
+      raf = 0;
+      return;
+    }
+    if (!raf) raf = requestAnimationFrame(step);
   });
   raf = requestAnimationFrame(step);
 
@@ -150,7 +164,7 @@ function mountShapeGrid(container, options = {}) {
 const root = document.getElementById('shape-grid');
 if (root) {
   mountShapeGrid(root, {
-    speed: 0,
+    speed: 0.22,
     squareSize: 40,
     direction: 'diagonal',
     borderColor: 'rgba(111, 88, 64, 0.28)',

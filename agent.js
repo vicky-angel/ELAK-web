@@ -573,9 +573,87 @@ function writeAcceptedEvents(plan, cycle) {
   if (typeof syncLaptopCalendar === "function") syncLaptopCalendar(cur);
   return cur;
 }
+function defaultPracticeVisit() {
+  const start = new Date();
+  const end = new Date();
+  end.setDate(end.getDate() + 14);
+  return {
+    date: start.toISOString(),
+    note: "",
+    exercises: [
+      { pattern: "pump", reps: 10, cue: "", note: "", essential: true, minBout: 1, daysPerWeek: 7 },
+      { pattern: "toe", reps: 8, cue: "", note: "", essential: true, minBout: 1, daysPerWeek: 7 },
+      { pattern: "alphabet", reps: 1, cue: "", note: "", essential: true, minBout: 1, daysPerWeek: 7 }
+    ],
+    dose: {
+      periodStart: start.toISOString(),
+      periodEnd: end.toISOString(),
+      timeOfDay: "09:00",
+      daysUntilNext: 14,
+      daysPerWeek: 7,
+      minBout: 1,
+      painRule: "Stop if the ankle sharp-pains, swells, or goes numb.",
+      sentence: "Time for your ankle practice."
+    }
+  };
+}
+function applySharedPracticeTimes(plan, cycle) {
+  if (!plan || !cycle || !Array.isArray(cycle.slots)) return;
+  const pack = typeof patientCalendarOf === "function" ? patientCalendarOf(plan) : null;
+  const extra = typeof elakPlanEvents === "function" ? elakPlanEvents(plan) : [];
+  const events = [].concat((pack && pack.events) || [], plan.calendar || [], extra);
+  const needles = [plan.patient, plan.username].filter(Boolean).map((s) => String(s).toLowerCase());
+  cycle.slots.forEach((slot) => {
+    if (!slotNeedsPick(slot) && slot.start) return;
+    const hit = events.find((event) => {
+      if (!event || !event.start) return false;
+      const key = typeof dayKey === "function" ? dayKey(event.start) : String(event.start).slice(0, 10);
+      if (key !== slot.date) return false;
+      const title = String(event.title || "").toLowerCase();
+      if (!/elak|practice|next visit/i.test(title)) return false;
+      if (needles.length && needles.some((n) => title.includes(n))) return true;
+      return !needles.length;
+    });
+    if (hit) {
+      slot.start = new Date(hit.start).toISOString();
+      slot.status = "accepted";
+    }
+  });
+}
+function ensurePatientPractice(plan) {
+  if (!plan || !plan.code || plan.archived) return plan;
+  const data = loadPlans();
+  const cur = data.plans[plan.code] || plan;
+  const visitNow = typeof latestVisit === "function" ? latestVisit(cur) : null;
+  if (!visitNow || !ankleExercises(visitNow.exercises).length) {
+    cur.visits = cur.visits || [];
+    cur.visits.push(defaultPracticeVisit());
+  }
+  const visit = typeof latestVisit === "function" ? latestVisit(cur) : cur.visits[cur.visits.length - 1];
+  if (!cycleOf(cur) && visit) {
+    cur.cycle = buildCycle(cur, visit, (visit && visit.dose) || {});
+  }
+  if (cur.cycle && cycleNeedsBooking(cur.cycle)) {
+    applySharedPracticeTimes(cur, cur.cycle);
+    applyRoleCalendarsToPlan(cur);
+    const busy = practiceCalendar(cur).filter((event) => !isVisitEvent(event));
+    cur.cycle.slots.forEach((slot) => {
+      if (!slotNeedsPick(slot)) return;
+      const taken = busy.concat(cur.cycle.slots.filter((other) => other.id !== slot.id && other.start).map((other) => ({
+        start: other.start,
+        end: new Date(new Date(other.start).getTime() + cur.cycle.minutes * 60000).toISOString()
+      })));
+      acceptSlot(cur.cycle, slot.id, bestFreeSlot(slot.date, cur.cycle.timeOfDay, taken, cur.cycle.minutes));
+    });
+    writeAcceptedEvents(cur, cur.cycle);
+    return loadPlans().plans[cur.code] || cur;
+  }
+  data.plans[cur.code] = cur;
+  savePlans(data);
+  return cur;
+}
 function autoBookCycle(plan) {
   if (!plan || !plan.code) return false;
-  if (!plan.calendarConsent) return false;
   const data = loadPlans();
   const cur = data.plans[plan.code] || plan;
   const cycle = cycleOf(cur);

@@ -658,6 +658,7 @@
     align-self: start;
     margin-top: 5.2rem;
     transform: translateX(-40px);
+    pointer-events: none;
   }
   #screen-title .home-hero img { width: min(340px, 28vw); height: auto; }
   #home-title {
@@ -693,9 +694,14 @@
     font-size: 1.08rem;
   }
   #start-btn:not([hidden]) {
+    position: relative;
+    z-index: 4;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    min-height: 52px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(111, 88, 64, 0.2);
     white-space: normal;
     text-align: center;
   }
@@ -1121,7 +1127,7 @@
     overflow: hidden;
     clip: rect(0 0 0 0);
   }
-  @media (max-width: 1100px) {
+  @media (max-width: 1280px) {
     .shape-grid { inset: 0; }
     #app { padding: 8px 18px 120px; }
     .mark { width: 64px; height: 54px; }
@@ -1145,6 +1151,7 @@
     .play-submit { right: 20px; bottom: 18px; }
     .brand { white-space: nowrap; font-size: 1.15rem; }
     header { align-items: center; flex-wrap: wrap; }
+    .header-actions { flex-wrap: wrap; justify-content: flex-end; max-width: 100%; }
     h1 { font-size: 2.6rem; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -1555,7 +1562,7 @@
 
 <script src="shared.js?v=89"></script>
 <script src="calendar-plugin.js?v=97"></script>
-<script src="agent.js?v=92"></script>
+<script src="agent.js?v=93"></script>
 <script src="kale-config.js?v=1"></script>
 <script src="buddy.js?v=101"></script>
 <script>
@@ -1836,7 +1843,7 @@ function updateChrome() {
   $("films-open").hidden = !plan || !inApp;
   $("patient-out").hidden = !inApp;
   if ($("home-open")) $("home-open").hidden = !inApp;
-  $("book-open").hidden = !inApp || !cycleOf(plan) || !calendarConsentOn("patient");
+  $("book-open").hidden = !inApp || !cycleOf(plan);
   $("mute").hidden = !plan || !inApp;
   paintNotesDot();
   if (window.ELAKBuddy) window.ELAKBuddy.refresh();
@@ -1861,11 +1868,18 @@ function refreshMeta() {
   const ankle = visit ? ankleExercises(visit.exercises) : [];
   const cycle = cycleOf(plan);
   markPhoneDay(plan);
-  if (calendarConsentOn("patient") && cycleNeedsBooking(cycle)) {
-    if (autoBookCycle(plan)) notifyPracticePlan(loadPlans().plans[plan.code] || plan);
+  if (typeof ensurePatientPractice === "function") {
+    try { ensurePatientPractice(plan); } catch (err) { /* keep the signed-in plan */ }
   }
-  if (calendarConsentOn("patient")) ensurePlanVisit(plan);
-  const live = loadPlans().plans[plan.code] || plan;
+  const ready = loadPlans().plans[plan.code] || plan;
+  const bookedCycle = cycleOf(ready);
+  if (cycleNeedsBooking(bookedCycle)) {
+    try {
+      if (autoBookCycle(ready)) notifyPracticePlan(loadPlans().plans[plan.code] || ready);
+    } catch (err) { /* still show the home page */ }
+  }
+  if (calendarConsentOn("patient")) ensurePlanVisit(ready);
+  const live = loadPlans().plans[plan.code] || ready;
   if (calendarConsentOn("patient") && keepVisitOnCalendar(live) && live.code) {
     const store = loadPlans();
     store.plans[live.code] = live;
@@ -1873,12 +1887,14 @@ function refreshMeta() {
   }
   const fresh = loadPlans().plans[plan.code] || plan;
   const booked = cycleOf(fresh);
-  $("book-open").hidden = !patientUiOn() || S.screen === "signin" || !booked || !calendarConsentOn("patient");
+  $("book-open").hidden = !patientUiOn() || S.screen === "signin" || !booked;
   $("start-btn").hidden = !plan;
   $("start-btn").textContent = "Start today's exercise";
-  $("plan-status").textContent = ankle.length
-    ? plan.patient + " · " + formatWhen(visit.date)
-    : (plan.patient || "");
+  const liveVisit = latestVisit(fresh) || visit;
+  const liveAnkle = liveVisit ? ankleExercises(liveVisit.exercises) : ankle;
+  $("plan-status").textContent = liveAnkle.length
+    ? (fresh.patient || plan.patient || "") + " · " + formatWhen(liveVisit.date)
+    : (fresh.patient || plan.patient || "");
   if ($("best-line")) $("best-line").hidden = true;
   paintNudgeLine(fresh, booked);
   renderHomePlan(fresh);
@@ -1923,7 +1939,7 @@ function paintNudgeLine(plan, cycle) {
     line.textContent = "";
     return;
   }
-  if (cycleNeedsBooking(cycle) && calendarConsentOn("patient")) {
+  if (cycleNeedsBooking(cycle)) {
     line.textContent = "Choosing practice times around your calendar…";
     return;
   }
@@ -1944,9 +1960,9 @@ function toLocalInput(iso) {
 }
 
 async function openBook() {
-  const plan = activePlan();
+  const plan = typeof ensurePatientPractice === "function" ? ensurePatientPractice(activePlan()) : activePlan();
   const cycle = cycleOf(plan);
-  if (!cycle || !calendarConsentOn("patient")) {
+  if (!cycle) {
     show("title");
     return;
   }
@@ -2023,7 +2039,7 @@ function renderBookPlan(plan) {
 }
 function homeFoldOpen(id) {
   if (!window.ELAK_HOME_FOLDS) window.ELAK_HOME_FOLDS = {};
-  if (window.ELAK_HOME_FOLDS[id] === undefined && id === "calendar") return true;
+  if (window.ELAK_HOME_FOLDS[id] === undefined && (id === "calendar" || id === "schedule")) return true;
   return !!window.ELAK_HOME_FOLDS[id];
 }
 function setHomeFold(id, on) {
@@ -2071,14 +2087,14 @@ function renderHomePlan(plan) {
 function renderHomeSchedule(plan) {
   const root = $("home-schedule");
   if (!root) return;
-  if (!plan || !calendarConsentOn("patient")) {
+  if (!plan) {
     root.hidden = true;
     root.replaceChildren();
     return;
   }
   const cycle = cycleOf(plan);
   root.hidden = false;
-  const pane = mountHomeFold(root, "schedule", "This week's exercise plan");
+  const pane = mountHomeFold(root, "schedule", "Exercise calendar");
   pane.replaceChildren();
   if (!cycle || !cycle.slots || !cycle.slots.length) {
     const empty = document.createElement("p");
@@ -3317,14 +3333,24 @@ function saveFeedback() {
 }
 
 function homeFromStart() {
-  const plan = activePlan();
-  const cycle = cycleOf(plan);
-  if (cycleNeedsBooking(cycle)) {
-    autoBookCycle(plan);
-    notifyPracticePlan(loadPlans().plans[plan.code] || plan);
+  try {
+    let plan = activePlan();
+    if (typeof ensurePatientPractice === "function") plan = ensurePatientPractice(plan) || plan;
+    const cycle = cycleOf(plan);
+    if (cycleNeedsBooking(cycle)) {
+      try {
+        autoBookCycle(plan);
+        if (typeof notifyPracticePlan === "function") notifyPracticePlan(loadPlans().plans[plan.code] || plan);
+      } catch (err) { /* start the set anyway */ }
+    }
+    try { sfxClick(); } catch (err) { /* iOS may block audio */ }
+    startDailyExercise();
+    if (S.screen !== "play" && $("plan-status")) {
+      $("plan-status").textContent = "Could not open today's exercise. Pull to refresh, then try again.";
+    }
+  } catch (err) {
+    if ($("plan-status")) $("plan-status").textContent = "Could not start today's exercise. Try again.";
   }
-  sfxClick();
-  startDailyExercise();
 }
 
 function renderPlan() {

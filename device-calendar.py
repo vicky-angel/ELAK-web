@@ -449,6 +449,42 @@ def drop_archived_events(events: list) -> list:
     return [event for event in unique_write_events(events) if not title_matches_people((event or {}).get("title"), ARCHIVED_PEOPLE)]
 
 
+def event_person(title: str) -> str:
+    parts = str(title or "").split("·")
+    return parts[-1].strip().lower() if len(parts) > 1 else ""
+
+
+def event_kind_name(title: str) -> str:
+    blob = str(title or "").lower()
+    if "next visit" in blob:
+        return "visit"
+    if "elak" in blob or "practice" in blob:
+        return "practice"
+    return "other"
+
+
+def merge_posted(existing: list, incoming: list, remove_people=None) -> list:
+    removing = {str(name).lower().strip() for name in (remove_people or []) if str(name).strip()}
+    incoming = unique_write_events(incoming)
+    kinds = {}
+    for event in incoming:
+        person = event_person((event or {}).get("title"))
+        if not person:
+            continue
+        kinds.setdefault(person, set()).add(event_kind_name((event or {}).get("title")))
+    kept = []
+    for event in existing or []:
+        title = (event or {}).get("title")
+        person = event_person(title)
+        kind = event_kind_name(title)
+        if person and (person in removing or title_matches_people(title, removing)):
+            continue
+        if person and kind in kinds.get(person, set()):
+            continue
+        kept.append(event)
+    return unique_write_events(kept + incoming)
+
+
 def events_write_stamp(tag: str, events: list) -> str:
     rows = [
         (str(event.get("title") or ""), str(event.get("start") or "")[:16], str(event.get("end") or "")[:16])
@@ -466,7 +502,7 @@ def write_calendar_events(tag: str, events: list, purge_if_empty: bool = False, 
         for name in list(ARCHIVED_PEOPLE):
             if name and name in title and name not in removing:
                 ARCHIVED_PEOPLE.discard(name)
-    events = drop_archived_events(incoming)
+    events = drop_archived_events(merge_posted(POSTED_ELAK.get("events") or [], incoming, removing))
     POSTED_ELAK["events"] = events
     save_posted_state()
     stamp = events_write_stamp(tag, events)

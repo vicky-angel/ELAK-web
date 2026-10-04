@@ -216,6 +216,7 @@ function loadClinicDraft(plan) {
   renderClinicCalendar(plan);
   syncClinicPanels();
   loadClinicCalendar(plan);
+  if (typeof syncLaptopCalendar === "function") syncLaptopCalendar({ _all: true });
 }
 let ankleOptionSource = null;
 function ankleOptions() {

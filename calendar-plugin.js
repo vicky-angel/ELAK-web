@@ -1969,7 +1969,13 @@ function startCalendarWatch() {
   window.ELAK_CAL_TIMER = setInterval(() => {
     if (window.ELAK_CAL_READING) return;
     if (typeof document !== "undefined" && document.hidden) return;
-    pullLiveCalendar(false).catch(() => {});
+    pullLiveCalendar(false).then(() => {
+      const who = typeof pageCalendarRole === "function" ? pageCalendarRole() : "";
+      syncLaptopCalendar(who === "clinician" ? { _all: true } : planForCalendarSync());
+    }).catch(() => {
+      const who = typeof pageCalendarRole === "function" ? pageCalendarRole() : "";
+      syncLaptopCalendar(who === "clinician" ? { _all: true } : planForCalendarSync());
+    });
   }, 30000);
 }
 function wireCalendarSync(button, status, after) {

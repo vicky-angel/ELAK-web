@@ -548,7 +548,7 @@ function keepVisitOnCalendar(plan) {
   plan.calendar.push({
     source: "elak",
     who: "both",
-    title: "Next visit",
+    title: "Next visit" + (plan.patient ? " · " + plan.patient : ""),
     start: plan.appointment.start,
     end: plan.appointment.end
   });

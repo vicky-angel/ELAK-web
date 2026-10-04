@@ -358,7 +358,7 @@ function bookJointAppointment(plan, days, minutes) {
   plan.calendar.push({
     source: "elak",
     who: "both",
-    title: "Next visit",
+    title: "Next visit" + (plan.patient ? " · " + plan.patient : ""),
     start: slot.start,
     end: slot.end
   });
@@ -525,10 +525,16 @@ function eventBelongsToClinician(event) {
   const kind = calendarEventKind(event);
   if (kind === "other") return true;
   const needles = clinicianPatientNeedles();
-  if (!needles.length) return false;
+  const plans = clinicianCalendarPlans();
+  if (!needles.length && !plans.length) return false;
   const title = String((event && event.title) || "").toLowerCase();
   const person = eventPerson(event);
-  return needles.some((n) => title.includes(n) || person === n || (person && (person.includes(n) || n.includes(person))));
+  if (needles.some((n) => title.includes(n) || person === n || (person && (person.includes(n) || n.includes(person))))) return true;
+  if ((kind === "visit" || kind === "practice") && needles.length === 1 && !person) return true;
+  if (kind === "visit") {
+    return plans.some((plan) => plan && plan.appointment && calendarStartKey({ start: plan.appointment.start }) === calendarStartKey(event));
+  }
+  return false;
 }
 function isoLocal(value) {
   const d = value instanceof Date ? value : new Date(value);
@@ -545,6 +551,8 @@ function filterSharedEvents(events, plan, role) {
   if (!needles.length) return [];
   return list.filter((event) => {
     const title = String(event.title || "").toLowerCase();
+    const person = eventPerson(event);
+    if (/next visit/.test(title)) return !person || needles.some((n) => person.includes(n) || n.includes(person) || title.includes(n));
     return needles.some((n) => title.includes(n));
   });
 }
@@ -775,12 +783,38 @@ function planForCalendarSync() {
   }
   return null;
 }
+function adoptSharedVisits(events) {
+  if (typeof loadPlans !== "function" || typeof savePlans !== "function") return;
+  const data = loadPlans();
+  let changed = false;
+  Object.values(data.plans || {}).forEach((plan) => {
+    if (!plan || plan.archived || (plan.appointment && plan.appointment.start)) return;
+    const names = [plan.patient, plan.username].map((value) => String(value || "").toLowerCase().trim()).filter(Boolean);
+    const hit = (events || []).find((event) => {
+      if (calendarEventKind(event) !== "visit" || !event.start) return false;
+      const person = eventPerson(event);
+      if (person) return names.some((n) => person.includes(n) || n.includes(person));
+      return names.length === 1;
+    });
+    if (!hit) return;
+    plan.appointment = {
+      start: hit.start,
+      end: hit.end || hit.start,
+      patientSeen: false,
+      clinicianSeen: false
+    };
+    if (typeof keepVisitOnCalendar === "function") keepVisitOnCalendar(plan);
+    changed = true;
+  });
+  if (changed) savePlans(data);
+}
 function writeDeviceCalendarToPlan(plan, pack, role) {
   const who = role || pageCalendarRole();
   const raw = pack || { events: [] };
   const events = who === "clinician" || isSharedCalendarPack(raw)
     ? filterSharedEvents(raw.events, plan, who)
     : (raw.events || []);
+  adoptSharedVisits(events);
   const stamped = saveRoleCalendar(who, {
     source: raw.source || "device",
     syncedAt: raw.syncedAt || new Date().toISOString(),
@@ -834,7 +868,15 @@ function paintRoleCalendar(root, status, role, plan) {
     : fake.calendar;
   if (status) {
     const n = visible.length;
-    status.textContent = n ? (n + (n === 1 ? " event" : " events")) : "No calendar events yet.";
+    const visit = visible.filter((event) => calendarEventKind(event) === "visit").sort((a, b) => String(a.start).localeCompare(String(b.start)))[0];
+    let text = n ? (n + (n === 1 ? " event" : " events")) : "No calendar events yet.";
+    if (visit && visit.start) {
+      const when = new Date(visit.start);
+      if (!Number.isNaN(when.getTime())) {
+        text += ". Next visit " + when.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+      }
+    }
+    status.textContent = text;
   }
   if (!window.ELAK_CAL_DAY) {
     const today = typeof dayKey === "function" ? dayKey(new Date()) : new Date().toISOString().slice(0, 10);
@@ -1011,12 +1053,14 @@ function clinicLaptopCalendarEvents() {
   }
   clinicianCalendarPlans().forEach((plan) => laptopCalendarEvents(plan).forEach(add));
   if (typeof clinicVisitEvents === "function") clinicVisitEvents().forEach(add);
+  const pack = typeof loadRoleCalendar === "function" ? (loadRoleCalendar("clinician") || {}) : {};
+  (pack.events || []).forEach(add);
   return typeof dedupeCalendarEvents === "function" ? dedupeCalendarEvents(out, null, "clinician") : out;
 }
 async function pushLaptopCalendar(plan) {
   const clinicAll = !plan || plan === true || (plan && plan._all) || (typeof pageCalendarRole === "function" && pageCalendarRole() === "clinician");
   const events = clinicAll ? clinicLaptopCalendarEvents() : laptopCalendarEvents(plan);
-  if (!events.length && !clinicAll) return null;
+  if (!events.length) return null;
   const payload = {
     tag: clinicAll ? "elak:clinic" : laptopCalendarTag(plan),
     events: events,
@@ -1121,6 +1165,17 @@ function renderDayCalendar(root, events, day, onChange) {
   next.addEventListener("click", () => onChange(shiftDay(day, 1)));
   nav.append(prev, label, next);
   root.appendChild(nav);
+  (events || []).filter((event) => calendarEventKind(event) === "visit" && event.start)
+    .sort((a, b) => String(a.start).localeCompare(String(b.start)))
+    .forEach((event) => {
+      const line = document.createElement("p");
+      line.className = "note";
+      const when = new Date(event.start);
+      line.textContent = (event.title || "Next visit") + " · " + (Number.isNaN(when.getTime())
+        ? String(event.start)
+        : when.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
+      root.appendChild(line);
+    });
   const rows = eventsOnDay(events, day);
   if (!rows.length) {
     const empty = document.createElement("p");

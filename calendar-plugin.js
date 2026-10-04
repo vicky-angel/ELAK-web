@@ -487,15 +487,19 @@ async function fetchCalendarJson(url, ms) {
 }
 function calendarBridgeUrls() {
   const https = typeof location !== "undefined" && location.protocol === "https:";
-  const urls = DEVICE_CAL_BRIDGES.slice();
+  const urls = [];
+  if (!https) {
+    urls.push("http://127.0.0.1:8766/calendar", "http://localhost:8766/calendar");
+  }
+  DEVICE_CAL_BRIDGES.forEach((url) => {
+    if (https && /^https?:\/\/(127\.0\.0\.1|localhost)/i.test(url)) return;
+    urls.push(url);
+  });
   try {
     if (typeof location !== "undefined" && location.protocol !== "file:") {
-      urls.unshift(new URL("data/elak-calendar.json", location.href).href);
+      urls.push(new URL("data/elak-calendar.json", location.href).href);
     }
   } catch (err) { /* keep listed urls */ }
-  if (https) urls = urls.filter((url) => !/^https?:\/\/(127\.0\.0\.1|localhost)/i.test(url));
-  const consented = typeof calendarConsentOn !== "function" || calendarConsentOn();
-  if (!consented) urls = urls.filter((url) => /elak-calendar\.json/i.test(url));
   return urls.filter((url, i) => url && urls.indexOf(url) === i);
 }
 function isSharedCalendarPack(pack, url) {
@@ -844,19 +848,28 @@ function downloadElakIcs(plan, events) {
   return true;
 }
 async function readDeviceCalendarBridge() {
-  if (window.ELAK_CAL_NO_BRIDGE) return loadRoleCalendar(pageCalendarRole());
+  let shared = null;
   for (const url of calendarBridgeUrls()) {
-    const data = await fetchCalendarJson(url, 1200);
-    const events = data && (Array.isArray(data.events) ? data.events : null);
-    if (events && events.length) {
-      return {
-        source: isSharedCalendarPack(data, url) ? "elak-shared" : (data.source || "device"),
-        syncedAt: data.syncedAt || new Date().toISOString(),
-        events
-      };
+    const live = /127\.0\.0\.1|localhost|:8766|\/api\/device-calendar/i.test(url);
+    const data = await fetchCalendarJson(url, live ? 8000 : 2500);
+    if (!data || !Array.isArray(data.events)) continue;
+    if (isSharedCalendarPack(data, url)) {
+      if (!shared) shared = { data, url };
+      continue;
     }
+    return {
+      source: data.source || "device",
+      syncedAt: data.syncedAt || new Date().toISOString(),
+      events: data.events
+    };
   }
-  window.ELAK_CAL_NO_BRIDGE = true;
+  if (shared) {
+    return {
+      source: "elak-shared",
+      syncedAt: shared.data.syncedAt || new Date().toISOString(),
+      events: shared.data.events
+    };
+  }
   return loadRoleCalendar(pageCalendarRole());
 }
 async function readDeviceCalendar(pickFile, fresh) {
@@ -1232,7 +1245,7 @@ function pushLaptopCalendar(plan) {
       const pending = window.ELAK_CAL_PUSH_PLAN;
       window.ELAK_CAL_PUSH_PLAN = null;
       pushLaptopCalendarNow(pending).then(resolve).catch(() => resolve(null));
-    }, 1600);
+    }, 400);
   });
 }
 function eventIsForPlan(event, plan) {
@@ -1867,10 +1880,12 @@ function submitVisitNegotiate() {
 function startCalendarWatch() {
   if (window.ELAK_CAL_TIMER) return;
   pullLiveCalendar(false).then(() => {
-    if (typeof pageCalendarRole === "function" && pageCalendarRole() === "clinician") {
-      syncLaptopCalendar({ _all: true });
-    }
-  }).catch(() => {});
+    const who = typeof pageCalendarRole === "function" ? pageCalendarRole() : "";
+    syncLaptopCalendar(who === "clinician" ? { _all: true } : planForCalendarSync());
+  }).catch(() => {
+    const who = typeof pageCalendarRole === "function" ? pageCalendarRole() : "";
+    syncLaptopCalendar(who === "clinician" ? { _all: true } : planForCalendarSync());
+  });
   window.ELAK_CAL_TIMER = setInterval(() => {
     if (window.ELAK_CAL_READING) return;
     if (typeof document !== "undefined" && document.hidden) return;

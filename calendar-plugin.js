@@ -1277,12 +1277,16 @@ async function pushLaptopCalendarNow(plan) {
     .concat(plan && plan._remove ? plan._remove : [])
     .map((name) => String(name || "").toLowerCase().trim())
     .filter((name, i, all) => name.length >= 2 && all.indexOf(name) === i);
+  const restorePeople = (plan && plan._restore ? plan._restore : [])
+    .map((name) => String(name || "").toLowerCase().trim())
+    .filter((name, i, all) => name.length >= 2 && all.indexOf(name) === i);
   const payload = {
     tag: clinicAll ? "elak:clinic" : laptopCalendarTag(plan),
     events: events,
     replaceElak: true,
     purgeIfEmpty: !!(plan && plan._purge) || !events.length,
-    removePeople: removePeople
+    removePeople: removePeople,
+    restorePeople: restorePeople
   };
   try {
     for (const url of laptopCalendarUrls()) {

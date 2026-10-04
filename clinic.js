@@ -66,6 +66,9 @@ function setPatientArchived(code, archived) {
   if (archived && typeof removePatientFromCalendars === "function") {
     removePatientFromCalendars(plan);
   }
+  if (!archived && typeof pushLaptopCalendar === "function") {
+    pushLaptopCalendar({ _all: true, _restore: typeof planNameNeedles === "function" ? planNameNeedles(plan) : [] });
+  }
   if (typeof renderClinicOwnCalendar === "function") renderClinicOwnCalendar();
   return plan;
 }

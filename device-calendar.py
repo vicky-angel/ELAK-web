@@ -503,18 +503,15 @@ def events_write_stamp(tag: str, events: list) -> str:
     return str(tag or "elak") + "|" + json.dumps(rows, ensure_ascii=False)
 
 
-def write_calendar_events(tag: str, events: list, purge_if_empty: bool = False, remove_people=None) -> dict:
-    removing = {str(name or "").lower().strip() for name in (remove_people or []) if str(name or "").strip()}
+def write_calendar_events(tag: str, events: list, purge_if_empty: bool = False, remove_people=None, restore_people=None) -> dict:
+    removing = {str(name or "").lower().strip() for name in (remove_people or []) if str(name or "").strip() and len(str(name or "").strip()) >= 2}
+    restoring = {str(name or "").lower().strip() for name in (restore_people or []) if str(name or "").strip() and len(str(name or "").strip()) >= 2}
     ARCHIVED_PEOPLE.update(removing)
-    incoming = unique_write_events(events)
-    for event in incoming:
-        title = (event or {}).get("title")
-        person = event_person(title)
-        for name in list(ARCHIVED_PEOPLE):
-            if name in removing:
-                continue
-            if person_matches(title, name) or (person and (person == name or person.startswith(name + " ") or name.startswith(person + " "))):
-                ARCHIVED_PEOPLE.discard(name)
+    ARCHIVED_PEOPLE.difference_update(restoring)
+    incoming = [
+        event for event in unique_write_events(events)
+        if not title_matches_people((event or {}).get("title"), ARCHIVED_PEOPLE)
+    ]
     events = drop_archived_events(merge_posted(POSTED_ELAK.get("events") or [], incoming, removing))
     POSTED_ELAK["events"] = events
     save_posted_state()
@@ -649,13 +646,17 @@ class Handler(BaseHTTPRequestHandler):
             return
         tag = str(payload.get("tag") or payload.get("id") or "elak")
         remove = payload.get("removePeople") or payload.get("remove") or []
+        restore = payload.get("restorePeople") or payload.get("restore") or []
         if not isinstance(remove, list):
             remove = [remove]
+        if not isinstance(restore, list):
+            restore = [restore]
         self._send(write_calendar_events(
             tag,
             events,
             bool(payload.get("purgeIfEmpty") or payload.get("replaceElak") and not events),
             remove,
+            restore,
         ))
 
 

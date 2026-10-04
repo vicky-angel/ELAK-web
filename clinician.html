@@ -29,12 +29,6 @@
     color: var(--ink);
     font-family: Outfit, "Avenir Next", "Segoe UI", sans-serif;
     background: #f4efe4;
-    word-spacing: 0.22em;
-    letter-spacing: 0.02em;
-    line-height: 1.5;
-  }
-  p, li, label, button, input, select, textarea, span, strong, small, a, td, th, h1, h2, h3 {
-    word-spacing: 0.22em;
   }
   .shape-grid {
     position: fixed;
@@ -165,10 +159,10 @@
     font-size: 0.78rem;
     line-height: 1.4;
   }
-  h1, h2 { font-family: Fraunces, Georgia, serif; font-weight: 680; letter-spacing: 0.01em; margin: 0 0 10px; word-spacing: 0.16em; }
+  h1, h2 { font-family: Fraunces, Georgia, serif; font-weight: 680; letter-spacing: -0.03em; margin: 0; }
   h1 { font-size: clamp(2.6rem, 6vw, 4.2rem); line-height: 1.05; }
-  .lede, .note { max-width: 40rem; line-height: 1.55; word-spacing: 0.22em; }
-  .note { color: var(--muted); font-size: 0.92rem; margin: 0 0 12px; }
+  .lede, .note { max-width: 40rem; line-height: 1.45; }
+  .note { color: var(--muted); font-size: 0.92rem; }
   #clinic-login-error:not(:empty) { color: #8a3b2a; font-weight: 600; }
   .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   .primary, .secondary { border-radius: 999px; padding: 14px 22px; border: 0; font-weight: 650; }
@@ -368,8 +362,8 @@
   }
   .mail-card .mail-actions {
     flex: 0 0 auto;
-    margin-top: 12px;
-    padding-top: 12px;
+    margin-top: 16px;
+    padding-top: 16px;
     border-top: 1px solid var(--line);
     background: #fff;
   }
@@ -396,14 +390,14 @@
     font-size: 0.92rem;
     line-height: 1.45;
   }
-  .mail-card .kicker { margin: 10px 0 4px; word-spacing: 0.28em; }
+  .mail-card .kicker { margin: 12px 0 4px; }
   .mail-card .kicker:first-child { margin-top: 0; }
-  .mail-card p, .mail-card h2 { margin: 0 0 12px; word-spacing: 0.22em; }
-  .mail-card h2 { line-height: 1.25; letter-spacing: 0.01em; }
-  .mail-card label { display: block; margin: 0 0 8px; word-spacing: 0.24em; }
-  #mail-kale { margin: 8px 0 0; display: flex; flex-direction: column; gap: 14px; }
-  #mail-kale .row { display: flex; flex-wrap: wrap; gap: 12px; }
-  #mail-kale-msg { margin: 0; }
+  .mail-card p, .mail-card h2 { margin: 0 0 8px; }
+  .mail-card h2 { line-height: 1.2; }
+  .mail-card label { display: block; margin: 0 0 8px; }
+  #mail-kale { margin: 18px 0 0; display: flex; flex-direction: column; gap: 16px; }
+  #mail-kale .row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
+  #mail-kale-msg { margin: 0 0 4px; }
   #mail-kale-reason-wrap { margin: 0; }
   #mail-kale-reason { width: 100%; min-height: 84px; }
   #clinic-notes, #clinic-reports { max-width: 720px; margin: 0 auto; }
@@ -450,8 +444,8 @@
     margin-top: 6px;
   }
   .mail-row.read .notes-dot { visibility: hidden; }
-  .mail-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-  .mail-copy strong, .mail-copy span { display: block; overflow-wrap: anywhere; word-spacing: 0.22em; }
+  .mail-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .mail-copy strong, .mail-copy span { display: block; overflow-wrap: anywhere; }
   .mail-copy strong { font-weight: 700; }
   .mail-copy span { color: var(--muted); }
   .mail-row small {
@@ -461,7 +455,7 @@
     color: var(--muted);
     white-space: nowrap;
   }
-  .mail-letter { white-space: pre-wrap; line-height: 1.65; overflow-wrap: break-word; word-spacing: 0.22em; margin: 0 0 16px; }
+  .mail-letter { white-space: pre-wrap; line-height: 1.5; overflow-wrap: break-word; margin: 0 0 8px; }
   @media (max-width: 900px) {
     .shape-grid { inset: 0; }
     #app { padding: 8px 40px 104px; }
@@ -734,6 +728,6 @@
 <script src="agent.js?v=99"></script>
 <script src="clinic.js?v=106"></script>
 <script src="kale-config.js?v=1"></script>
-<script src="buddy.js?v=104"></script>
+<script src="buddy.js?v=105"></script>
 </body>
 </html>

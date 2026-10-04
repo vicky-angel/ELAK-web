@@ -31,12 +31,6 @@
     color: var(--ink);
     font-family: Outfit, "Avenir Next", "Segoe UI", sans-serif;
     background: #f4efe4;
-    word-spacing: 0.22em;
-    letter-spacing: 0.02em;
-    line-height: 1.5;
-  }
-  p, li, label, button, input, select, textarea, span, strong, small, a, td, th, h1, h2, h3 {
-    word-spacing: 0.22em;
   }
   .shape-grid {
     position: fixed;
@@ -634,8 +628,8 @@
     margin-top: 6px;
   }
   .mail-row.read .notes-dot { visibility: hidden; }
-  .mail-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-  .mail-copy strong, .mail-copy span { display: block; overflow-wrap: anywhere; word-spacing: 0.22em; }
+  .mail-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .mail-copy strong, .mail-copy span { display: block; overflow-wrap: anywhere; }
   .mail-copy strong { font-weight: 700; }
   .mail-copy span { color: var(--muted); }
   .mail-row small {
@@ -645,16 +639,36 @@
     color: var(--muted);
     white-space: nowrap;
   }
-  .mail-letter { white-space: pre-wrap; line-height: 1.65; word-spacing: 0.22em; margin: 0 0 16px; }
-  .overlay .card.mail-card { width: min(560px, 100%); display: flex; flex-direction: column; gap: 10px; }
-  .mail-card .kicker { margin: 10px 0 4px; word-spacing: 0.28em; }
+  .mail-letter { white-space: pre-wrap; line-height: 1.5; margin: 0 0 8px; }
+  .overlay .card.mail-card {
+    width: min(560px, 100%);
+    max-height: min(86vh, 860px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 16px;
+  }
+  .mail-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 4px;
+  }
+  .mail-card .mail-actions {
+    flex: 0 0 auto;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+  .mail-card .kicker { margin: 12px 0 4px; }
   .mail-card .kicker:first-child { margin-top: 0; }
-  .mail-card p, .mail-card h2 { margin: 0 0 12px; word-spacing: 0.22em; }
-  .mail-card h2 { line-height: 1.25; letter-spacing: 0.01em; }
-  .mail-card label { display: block; margin: 0 0 8px; word-spacing: 0.24em; }
-  #mail-kale { margin: 8px 0 0; display: flex; flex-direction: column; gap: 14px; }
-  #mail-kale .row { display: flex; flex-wrap: wrap; gap: 12px; }
-  #mail-kale-msg { margin: 0; }
+  .mail-card p, .mail-card h2 { margin: 0 0 8px; }
+  .mail-card h2 { line-height: 1.2; }
+  .mail-card label { display: block; margin: 0 0 8px; }
+  #mail-kale { margin: 18px 0 0; display: flex; flex-direction: column; gap: 16px; }
+  #mail-kale .row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
+  #mail-kale-msg { margin: 0 0 4px; }
   #mail-kale-reason-wrap { margin: 0; }
   #mail-kale-reason { width: 100%; min-height: 84px; }
   .cal-wrap { max-height: 320px; overflow: auto; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,250,242,0.55); margin-top: 14px; }
@@ -756,7 +770,7 @@
     font-size: 0.78rem;
     line-height: 1.4;
   }
-  h1, h2, h3 { font-family: Fraunces, Georgia, serif; font-weight: 680; letter-spacing: 0.01em; margin: 0 0 10px; word-spacing: 0.16em; }
+  h1, h2, h3 { font-family: Fraunces, Georgia, serif; font-weight: 680; letter-spacing: -0.03em; margin: 0; }
   h1 { font-size: clamp(3rem, 7vw, 5.4rem); line-height: 0.92; }
   .lede { font-size: 1.18rem; line-height: 1.5; max-width: 38rem; color: var(--ink); margin: 0 0 12px; }
   .note { color: var(--muted); font-size: 0.92rem; line-height: 1.5; max-width: 40rem; margin: 0 0 12px; }
@@ -1058,6 +1072,7 @@
     display: grid;
     place-items: center;
     padding: 18px;
+    overflow: auto;
   }
   .overlay[hidden] { display: none !important; }
   #overlay-unlock { z-index: 9; }
@@ -1454,35 +1469,37 @@
 
 <div class="overlay" id="overlay-mail" hidden>
   <div class="card mail-card">
-    <p class="kicker">From</p>
-    <p id="mail-from"></p>
-    <p class="kicker">Subject</p>
-    <h2 id="mail-subject"></h2>
-    <p class="note" id="mail-when"></p>
-    <p id="mail-body" class="mail-letter"></p>
-    <div id="mail-negotiate" hidden>
-      <div class="field">
-        <label for="mail-new-time">Negotiate a new time</label>
-        <input id="mail-new-time" type="datetime-local">
+    <div class="mail-scroll">
+      <p class="kicker">From</p>
+      <p id="mail-from"></p>
+      <p class="kicker">Subject</p>
+      <h2 id="mail-subject"></h2>
+      <p class="note" id="mail-when"></p>
+      <p id="mail-body" class="mail-letter"></p>
+      <div id="mail-negotiate" hidden>
+        <div class="field">
+          <label for="mail-new-time">Negotiate a new time</label>
+          <input id="mail-new-time" type="datetime-local">
+        </div>
+        <p class="note" id="mail-negotiate-msg"></p>
+        <div class="row">
+          <button class="secondary" id="mail-negotiate-btn" type="button">Negotiate</button>
+        </div>
       </div>
-      <p class="note" id="mail-negotiate-msg"></p>
-      <div class="row">
-        <button class="secondary" id="mail-negotiate-btn" type="button">Negotiate</button>
+      <div id="mail-kale" hidden>
+        <p class="note" id="mail-kale-msg"></p>
+        <div class="field" id="mail-kale-reason-wrap" hidden>
+          <label for="mail-kale-reason" id="mail-kale-reason-label">Reason</label>
+          <textarea id="mail-kale-reason" rows="3"></textarea>
+        </div>
+        <div class="row" id="mail-kale-actions">
+          <button class="primary" id="mail-kale-agree" type="button">Agree</button>
+          <button class="secondary" id="mail-kale-disagree" type="button">Disagree</button>
+          <button class="primary" id="mail-kale-appeal" type="button" hidden>Reappeal</button>
+        </div>
       </div>
     </div>
-    <div id="mail-kale" hidden>
-      <p class="note" id="mail-kale-msg"></p>
-      <div class="field" id="mail-kale-reason-wrap" hidden>
-        <label for="mail-kale-reason" id="mail-kale-reason-label">Reason</label>
-        <textarea id="mail-kale-reason" rows="3"></textarea>
-      </div>
-      <div class="row" id="mail-kale-actions">
-        <button class="primary" id="mail-kale-agree" type="button">Agree</button>
-        <button class="secondary" id="mail-kale-disagree" type="button">Disagree</button>
-        <button class="primary" id="mail-kale-appeal" type="button" hidden>Reappeal</button>
-      </div>
-    </div>
-    <div class="row">
+    <div class="row mail-actions">
       <button class="primary" id="mail-close" type="button">Close</button>
     </div>
   </div>
@@ -1591,7 +1608,7 @@
 <script src="calendar-plugin.js?v=107"></script>
 <script src="agent.js?v=99"></script>
 <script src="kale-config.js?v=1"></script>
-<script src="buddy.js?v=104"></script>
+<script src="buddy.js?v=105"></script>
 <script>
 const SAVE_KEY = "full-range-v1";
 const UP = 0.40;

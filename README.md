@@ -9,6 +9,8 @@ After you deploy this folder as a static site:
 - Patient: `https://YOUR-DOMAIN/`
 - Clinician: `https://YOUR-DOMAIN/clinician.html`
 
+The home link is the patient page. Open `/clinician.html` for the clinician page, or use **Clinician sign in** on the patient card.
+
 ## Deploy on Zeabur
 
 1. Push this repository to GitHub.

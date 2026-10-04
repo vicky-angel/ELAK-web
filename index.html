@@ -1097,6 +1097,8 @@
   .gate .remember { margin: 6px 0 22px; }
   .gate .note { margin: 0 0 16px; }
   .gate .primary { margin-top: 2px; }
+  .gate-switch { margin: 16px 0 0; }
+  .gate-switch a { color: var(--terra); font-weight: 650; }
   .profile-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 22px; align-items: start; }
   .field-label { margin: 0 0 6px; font-size: 0.8rem; font-weight: 700; color: var(--muted); }
   .swatches, .styles { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 14px; }
@@ -1170,6 +1172,7 @@
       </label>
       <p class="note" id="patient-error"></p>
       <button class="primary" type="submit">Sign in</button>
+      <p class="note gate-switch"><a href="clinician.html">Clinician sign in</a></p>
     </form>
     <div class="hero-card">
       <img src="hero.png?v=22" alt="A physiotherapist with a clipboard stands beside a patient practising at parallel bars.">

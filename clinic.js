@@ -52,6 +52,7 @@ function listedPlans() {
   return Object.values(data.plans)
     .filter((plan) => !mine || !plan.clinicianId || plan.clinicianId === mine)
     .filter((plan) => archived ? !!plan.archived : !plan.archived)
+    .filter((plan) => !(typeof isGhostPatientPlan === "function" && isGhostPatientPlan(plan)))
     .sort((a, b) => (b.updated || "").localeCompare(a.updated || ""));
 }
 function setPatientArchived(code, archived) {

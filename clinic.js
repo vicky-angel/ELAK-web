@@ -92,7 +92,7 @@ function syncClinicPanels() {
   if ($c("clinic-switch-login")) $c("clinic-switch-login").hidden = archived;
   if ($c("account-summary-line")) {
     $c("account-summary-line").textContent = hasLogin
-      ? plan.username + " · password saved"
+      ? plan.username + " · phone code " + plan.code
       : "";
   }
   if ($c("account-box")) {
@@ -661,7 +661,7 @@ function renderPatients() {
     name.textContent = plan.patient;
     const meta = document.createElement("small");
     const visit = latestVisit(plan);
-    meta.textContent = (plan.username || "No username") + (visit ? " · " + formatWhen(visit.date) : " · No visit yet");
+    meta.textContent = (plan.username || "No username") + (plan.code ? " · " + plan.code : "") + (visit ? " · " + formatWhen(visit.date) : " · No visit yet");
     btn.append(name);
     if (plan.injury) {
       const injury = document.createElement("small");
@@ -825,8 +825,8 @@ function noteSavedLogin(username, passwordChanged) {
   if ($c("clinic-copy")) $c("clinic-copy").textContent = "Copy username";
   if ($c("clinic-pass-note")) {
     $c("clinic-pass-note").textContent = passwordChanged
-      ? "Password saved. Give " + username + " and that password to the patient."
-      : "This patient signs in as " + username + ".";
+      ? "Password saved. On a new phone they sign in with " + username + ", that password, and phone code " + (clinic.code || "") + "."
+      : "This patient signs in as " + username + (clinic.code ? " · phone code " + clinic.code : "") + ".";
   }
   if ($c("clinic-pass")) $c("clinic-pass").value = "";
   if ($c("clinic-pass-confirm")) $c("clinic-pass-confirm").value = "";
@@ -1362,7 +1362,7 @@ $c("gate-form").addEventListener("submit", async (event) => {
     if (typeof setClinicianCalendarConsent === "function") setClinicianCalendarConsent(calConsent);
     showClinicHome();
   } catch (err) {
-    $c("gate-error").textContent = "Sign-in needs a secure page, opened through localhost.";
+    $c("gate-error").textContent = "Sign-in could not finish. Try again on this page.";
   }
 });
 $c("gate-login").addEventListener("click", () => showGate("login"));
@@ -1489,9 +1489,11 @@ $c("clinic-form").addEventListener("submit", (event) => {
 });
 $c("clinic-copy").addEventListener("click", async () => {
   const username = $c("clinic-username").value.trim();
+  const code = clinic.code || "";
   if (!username) return;
-  try { await navigator.clipboard.writeText(username); $c("clinic-copy").textContent = "Copied"; }
-  catch { $c("clinic-copy").textContent = username; }
+  const text = code ? username + " · " + code : username;
+  try { await navigator.clipboard.writeText(text); $c("clinic-copy").textContent = "Copied"; }
+  catch { $c("clinic-copy").textContent = text; }
 });
 if ($c("clinic-save-login")) $c("clinic-save-login").addEventListener("click", savePatientLogin);
 

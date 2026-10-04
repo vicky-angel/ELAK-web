@@ -159,6 +159,61 @@ function planByUsername(username) {
   if (!key) return null;
   return Object.values(loadPlans().plans).find((plan) => normalizeUsername(plan.username) === key) || null;
 }
+function normalizePlanCode(raw) {
+  return String(raw || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+function planByCode(code) {
+  const key = normalizePlanCode(code);
+  if (key.length !== 6) return null;
+  const data = loadPlans();
+  return data.plans[key] || Object.values(data.plans).find((plan) => normalizePlanCode(plan.code) === key) || null;
+}
+async function enrollPatientOnThisPhone(username, password, code) {
+  const key = normalizePlanCode(code);
+  if (!/^[A-Z0-9]{6}$/.test(key)) return { ok: false, reason: "need-code" };
+  const user = normalizeUsername(username);
+  if (!validUsername(user) || String(password || "").length < 8) return { ok: false, reason: "bad-pass" };
+  const data = loadPlans();
+  let plan = data.plans[key] || Object.values(data.plans).find((item) => normalizePlanCode(item.code) === key) || null;
+  if (plan && plan.username && normalizeUsername(plan.username) !== user) {
+    return { ok: false, reason: "code-mismatch" };
+  }
+  if (plan && plan.hash && plan.salt) {
+    const hash = await hashPassword(password, plan.salt);
+    if (hash !== plan.hash) return { ok: false, reason: "bad-pass" };
+    if (!plan.username) {
+      plan.username = user;
+      plan.updated = new Date().toISOString();
+      data.plans[plan.code] = plan;
+      savePlans(data);
+    }
+    return { ok: true, plan };
+  }
+  const salt = randomSalt();
+  const hash = await hashPassword(password, salt);
+  if (!plan) {
+    plan = {
+      code: key,
+      patient: user,
+      username: user,
+      salt,
+      hash,
+      visits: [],
+      rewards: [],
+      calendar: [],
+      phoneDays: {},
+      updated: new Date().toISOString()
+    };
+  } else {
+    plan.username = user;
+    plan.salt = salt;
+    plan.hash = hash;
+    plan.updated = new Date().toISOString();
+  }
+  data.plans[plan.code || key] = plan;
+  savePlans(data);
+  return { ok: true, plan };
+}
 function clearStalePatientSession() {
   if (!patientRemembered()) localStorage.removeItem(PATIENT_SESSION_KEY);
   const who = patientSessionName();
@@ -203,12 +258,18 @@ function calendarConsentOn(role) {
   const plan = typeof activePlan === "function" ? activePlan() : null;
   return !!(plan && plan.calendarConsent);
 }
-async function signInPatient(username, password, persist, calendarConsent) {
-  const plan = planByUsername(username);
-  if (!plan) return { ok: false, reason: "unknown" };
-  if (!plan.hash || !plan.salt) return { ok: false, reason: "no-pass" };
-  const hash = await hashPassword(password, plan.salt);
-  if (hash !== plan.hash) return { ok: false, reason: "bad-pass" };
+async function signInPatient(username, password, persist, calendarConsent, code) {
+  if (typeof pullElakStore === "function") await pullElakStore();
+  let plan = planByUsername(username);
+  if (!plan) {
+    const enrolled = await enrollPatientOnThisPhone(username, password, code);
+    if (!enrolled.ok) return enrolled;
+    plan = enrolled.plan;
+  } else {
+    if (!plan.hash || !plan.salt) return { ok: false, reason: "no-pass" };
+    const hash = await hashPassword(password, plan.salt);
+    if (hash !== plan.hash) return { ok: false, reason: "bad-pass" };
+  }
   rememberPatient(plan.username, plan.code, persist);
   setPatientCalendarConsent(plan.username, !!calendarConsent);
   return { ok: true };
@@ -330,10 +391,62 @@ function randomSalt() {
   crypto.getRandomValues(bytes);
   return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+function sha256hex(text) {
+  const msg = new TextEncoder().encode(String(text || ""));
+  const K = [
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+  ];
+  const rotr = (x, n) => (x >>> n) | (x << (32 - n));
+  const bytes = [];
+  for (let i = 0; i < msg.length; i++) bytes.push(msg[i]);
+  bytes.push(0x80);
+  while ((bytes.length % 64) !== 56) bytes.push(0);
+  const bitLen = msg.length * 8;
+  for (let i = 7; i >= 0; i--) bytes.push((Math.floor(bitLen / Math.pow(2, i * 8)) & 0xff));
+  let h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a;
+  let h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
+  const w = new Array(64);
+  for (let i = 0; i < bytes.length; i += 64) {
+    for (let t = 0; t < 16; t++) {
+      w[t] = (bytes[i + t * 4] << 24) | (bytes[i + t * 4 + 1] << 16) | (bytes[i + t * 4 + 2] << 8) | bytes[i + t * 4 + 3];
+    }
+    for (let t = 16; t < 64; t++) {
+      const s0 = rotr(w[t - 15], 7) ^ rotr(w[t - 15], 18) ^ (w[t - 15] >>> 3);
+      const s1 = rotr(w[t - 2], 17) ^ rotr(w[t - 2], 19) ^ (w[t - 2] >>> 10);
+      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) >>> 0;
+    }
+    let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+    for (let t = 0; t < 64; t++) {
+      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+      const ch = (e & f) ^ (~e & g);
+      const temp1 = (h + S1 + ch + K[t] + w[t]) >>> 0;
+      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const temp2 = (S0 + maj) >>> 0;
+      h = g; g = f; f = e; e = (d + temp1) >>> 0;
+      d = c; c = b; b = a; a = (temp1 + temp2) >>> 0;
+    }
+    h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0; h3 = (h3 + d) >>> 0;
+    h4 = (h4 + e) >>> 0; h5 = (h5 + f) >>> 0; h6 = (h6 + g) >>> 0; h7 = (h7 + h) >>> 0;
+  }
+  return [h0, h1, h2, h3, h4, h5, h6, h7].map((n) => n.toString(16).padStart(8, "0")).join("");
+}
 async function hashPassword(password, salt) {
-  const data = new TextEncoder().encode(salt + "\n" + password);
-  const buf = await crypto.subtle.digest("SHA-256", data);
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const text = salt + "\n" + password;
+  try {
+    if (crypto.subtle && crypto.subtle.digest) {
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+      return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    }
+  } catch (err) { /* use fallback on HTTP phones */ }
+  return sha256hex(text);
 }
 function clinicianId() {
   const bytes = new Uint8Array(8);
@@ -356,6 +469,7 @@ async function createClinician(name, password) {
   return { ok: true, id: account.id };
 }
 async function signInClinician(name, password) {
+  if (typeof pullElakStore === "function") await pullElakStore();
   const data = loadClinicians();
   const account = data.accounts.find((item) => item.name.toLowerCase() === name.trim().toLowerCase());
   if (!account) return false;
@@ -366,20 +480,31 @@ async function signInClinician(name, password) {
   return true;
 }
 
+function elakStorePoint(url) {
+  const raw = String(url || "").replace(/\/$/, "");
+  if (!raw) return "";
+  if (/\/store$|jsonblob|elak-live|raw\.githubusercontent/i.test(raw)) return raw;
+  return raw + "/store";
+}
 function elakStoreUrls() {
   const urls = [];
   const custom = (typeof window !== "undefined" && (window.ELAK_STORE_URL || window.ELAK_KALE_URL))
     ? String(window.ELAK_STORE_URL || window.ELAK_KALE_URL).replace(/\/$/, "")
     : "";
-  if (custom) urls.push(custom + "/store");
+  const pointed = elakStorePoint(custom);
+  if (pointed) urls.push(pointed);
+  try {
+    if (typeof location !== "undefined" && location.protocol !== "file:") {
+      urls.push(new URL("data/elak-live.json", location.href).href);
+    }
+  } catch (err) { /* skip */ }
+  urls.push("https://raw.githubusercontent.com/vicky-angel/ELAK-web/main/data/elak-live.json");
   let origin = "";
   try { origin = typeof location !== "undefined" ? location.origin : ""; } catch (err) { origin = ""; }
   const onLaptop = !origin || origin === "null" || /^(https?:\/\/)?(127\.0\.0\.1|localhost)(:\d+)?$/i.test(origin);
   if (onLaptop) {
     urls.push("http://127.0.0.1:8767/store");
     urls.push("http://localhost:8767/store");
-  } else if (!custom) {
-    try { urls.push(new URL("/store", origin).href); } catch (err) { /* skip */ }
   }
   return urls.filter((url, i) => url && urls.indexOf(url) === i);
 }
@@ -487,12 +612,14 @@ function schedulePushElakStore() {
 
 async function pushElakStore() {
   elakStoreTimer = 0;
-  const body = JSON.stringify(elakLocalSlice());
-  const urls = elakStoreUrl ? [elakStoreUrl] : elakStoreUrls();
-  for (const url of urls) {
+  const slice = elakLocalSlice();
+  const body = JSON.stringify(slice);
+  const urls = elakStoreUrl ? [elakStoreUrl].concat(elakStoreUrls()) : elakStoreUrls();
+  for (const url of urls.filter((item, i, all) => all.indexOf(item) === i)) {
+    if (/elak-live\.json|raw\.githubusercontent/i.test(url)) continue;
     try {
       const res = await fetch(url, {
-        method: "POST",
+        method: /jsonblob/i.test(url) ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body
       });

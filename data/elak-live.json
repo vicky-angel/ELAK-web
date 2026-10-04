@@ -1,0 +1,15 @@
+{
+  "updated": "",
+  "plans": {},
+  "clinicians": {
+    "accounts": []
+  },
+  "inbox": {
+    "clinic": [],
+    "patients": {}
+  },
+  "buddy": {
+    "threads": {}
+  },
+  "reports": {}
+}

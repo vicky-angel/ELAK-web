@@ -658,12 +658,16 @@ function archivedPatientNeedles() {
   });
   return out;
 }
-function eventMatchesNeedles(event, needles) {
-  const names = needles || [];
-  if (!names.length) return false;
-  const title = String((event && event.title) || "").toLowerCase();
+function personMatchesName(event, name) {
+  const n = String(name || "").toLowerCase().trim();
+  if (n.length < 2) return false;
   const person = eventPerson(event);
-  return names.some((n) => title.includes(n) || person === n || (person && (person.includes(n) || n.includes(person))));
+  const title = String((event && event.title) || "").toLowerCase();
+  if (person && (person === n || person.startsWith(n + " ") || n.startsWith(person + " "))) return true;
+  return title.indexOf(" · " + n) >= 0 || title.endsWith("· " + n);
+}
+function eventMatchesNeedles(event, needles) {
+  return (needles || []).some((name) => personMatchesName(event, name));
 }
 function isGhostCalendarPerson(event) {
   if (calendarEventKind(event) === "other") return false;

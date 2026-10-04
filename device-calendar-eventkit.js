@@ -78,16 +78,19 @@ function eventCals(store) {
   return kept;
 }
 
-function destCalendar(store) {
+function destCalendars(store) {
   const cals = eventCals(store);
   function hidden(cal) {
     return /^ELAK$/i.test(unwrap(cal && cal.title));
   }
+  const found = [];
+  const seen = {};
   const start = $.NSDate.dateWithTimeIntervalSinceNow(-21 * 86400);
   const end = $.NSDate.dateWithTimeIntervalSinceNow(21 * 86400);
   if (Number(cals.count)) {
     const pred = store.predicateForEventsWithStartDateEndDateCalendars(start, end, cals);
     const evs = store.eventsMatchingPredicate(pred);
+    const hits = [];
     for (let i = 0; i < Number(evs.count); i++) {
       const ev = evs.objectAtIndex(i);
       const title = unwrap(ev.title);
@@ -96,16 +99,31 @@ function destCalendar(store) {
       const cal = ev.calendar;
       if (!cal || hidden(cal)) continue;
       if (/ELAK|next visit/i.test(title) || /elak:/i.test(notes) || /elak-/i.test(uid)) continue;
-      if (/^life(\b|[.\s]|$)/i.test(title)) return cal;
+      if (!/^life(\b|[.\s]|$)/i.test(title)) continue;
+      let at = 0;
+      try { at = Number(ev.startDate.timeIntervalSince1970); } catch (err) { at = 0; }
+      hits.push({ cal: cal, at: at, id: unwrap(cal.calendarIdentifier) });
+    }
+    hits.sort(function (a, b) { return b.at - a.at; });
+    for (let i = 0; i < hits.length; i++) {
+      if (!hits[i].id || seen[hits[i].id]) continue;
+      seen[hits[i].id] = true;
+      found.push(hits[i].cal);
     }
   }
+  if (found.length) return found;
   const def = store.defaultCalendarForNewEvents;
-  if (def && !hidden(def)) return def;
+  if (def && !hidden(def)) return [def];
   for (let i = 0; i < Number(cals.count); i++) {
     const cal = cals.objectAtIndex(i);
-    if (!hidden(cal)) return cal;
+    if (!hidden(cal)) return [cal];
   }
-  return def || null;
+  return def ? [def] : [];
+}
+
+function destCalendar(store) {
+  const dests = destCalendars(store);
+  return dests.length ? dests[0] : null;
 }
 
 function readEvents() {
@@ -156,12 +174,12 @@ function writeEvents(payload) {
     seen[key] = true;
     events.push(item);
   }
-  const dest = destCalendar(store);
-  if (!dest) return { ok: false, reason: "no-calendar", written: 0 };
+  const dests = destCalendars(store);
+  if (!dests.length) return { ok: false, reason: "no-calendar", written: 0 };
   const start = $.NSDate.dateWithTimeIntervalSinceNow(-90 * 86400);
   const end = $.NSDate.dateWithTimeIntervalSinceNow(180 * 86400);
-  const dests = eventCals(store);
-  const pred = store.predicateForEventsWithStartDateEndDateCalendars(start, end, dests);
+  const scan = eventCals(store);
+  const pred = store.predicateForEventsWithStartDateEndDateCalendars(start, end, scan);
   const existing = store.eventsMatchingPredicate(pred);
   const n = Number(existing.count);
   for (let i = 0; i < n; i++) {
@@ -195,7 +213,7 @@ function writeEvents(payload) {
     ev.startDate = dateFromParts(sm[0], sm[1], sm[2], sm[3], sm[4]);
     ev.endDate = dateFromParts(em[0], em[1], em[2], em[3], em[4]);
     ev.notes = ((item.notes || "") + "\n" + tag).trim();
-    ev.calendar = dest;
+    ev.calendar = dests[0];
     if (store.saveEventSpanCommitError(ev, $.EKSpanThisEvent, false, null)) written += 1;
   }
   store.commit(null);

@@ -440,9 +440,19 @@ def save_posted_state() -> None:
         return
 
 
-def title_matches_people(title: str, people) -> bool:
+def person_matches(title: str, name: str) -> bool:
+    name = str(name or "").lower().strip()
+    if len(name) < 2:
+        return False
+    person = event_person(title)
+    if person and (person == name or person.startswith(name + " ") or name.startswith(person + " ")):
+        return True
     blob = str(title or "").lower()
-    return any(name and name in blob for name in people)
+    return (" · " + name) in blob or blob.endswith("· " + name)
+
+
+def title_matches_people(title: str, people) -> bool:
+    return any(person_matches(title, name) for name in people)
 
 
 def drop_archived_events(events: list) -> list:
@@ -498,9 +508,12 @@ def write_calendar_events(tag: str, events: list, purge_if_empty: bool = False, 
     ARCHIVED_PEOPLE.update(removing)
     incoming = unique_write_events(events)
     for event in incoming:
-        title = str((event or {}).get("title") or "").lower()
+        title = (event or {}).get("title")
+        person = event_person(title)
         for name in list(ARCHIVED_PEOPLE):
-            if name and name in title and name not in removing:
+            if name in removing:
+                continue
+            if person_matches(title, name) or (person and (person == name or person.startswith(name + " ") or name.startswith(person + " "))):
                 ARCHIVED_PEOPLE.discard(name)
     events = drop_archived_events(merge_posted(POSTED_ELAK.get("events") or [], incoming, removing))
     POSTED_ELAK["events"] = events

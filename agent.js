@@ -771,6 +771,7 @@ function clinicVisitEvents() {
       });
     }
   });
+  if (typeof clinicNextVisitEvents === "function") clinicNextVisitEvents().forEach((event) => out.push(event));
   return typeof dedupeCalendarEvents === "function" ? dedupeCalendarEvents(out, null, "clinician") : out;
 }
 function dueSlot(cycle, now) {

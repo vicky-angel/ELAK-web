@@ -221,7 +221,7 @@ function displayWindowForPlan(plan) {
   start.setDate(start.getDate() - 7);
   start.setHours(0, 0, 0, 0);
   const end = new Date();
-  end.setDate(end.getDate() + 60);
+  end.setDate(end.getDate() + 90);
   const cycleStart = new Date(cycle.start);
   const cycleEnd = new Date(cycle.end);
   if (!Number.isNaN(cycleStart.getTime()) && cycleStart < start) start.setTime(cycleStart.getTime());
@@ -520,6 +520,47 @@ function clinicianPatientNeedles() {
     });
   });
   return needles;
+}
+async function loadSharedElakCalendar() {
+  if (window.ELAK_SHARED_CAL && Array.isArray(window.ELAK_SHARED_CAL.events)) return window.ELAK_SHARED_CAL;
+  try {
+    const res = await fetch("data/elak-calendar.json?v=visit", { cache: "no-store" });
+    const data = await res.json();
+    if (data && Array.isArray(data.events)) {
+      window.ELAK_SHARED_CAL = data;
+      return data;
+    }
+  } catch (err) { /* keep going */ }
+  return { events: [] };
+}
+function clinicNextVisitEvents() {
+  const out = [];
+  const seen = {};
+  function add(event, fallbackName) {
+    if (!event || !event.start) return;
+    const title = String(event.title || "");
+    const isVisit = calendarEventKind(event) === "visit" || /next visit/i.test(title);
+    if (!isVisit) return;
+    const named = title.indexOf("Next visit") === 0 ? title : ("Next visit" + (fallbackName ? " · " + fallbackName : (eventPerson(event) ? " · " + eventPerson(event) : "")));
+    const row = { source: "elak", who: "both", title: named, start: event.start, end: event.end || event.start };
+    if (typeof eventBelongsToClinician === "function" && !eventBelongsToClinician(row)) return;
+    const key = calendarStartKey(row) + "|" + eventPerson(row);
+    if (seen[key]) return;
+    seen[key] = true;
+    out.push(row);
+  }
+  (typeof clinicianCalendarPlans === "function" ? clinicianCalendarPlans() : []).forEach((plan) => {
+    if (plan && plan.appointment && plan.appointment.start) {
+      add({ title: "Next visit · " + (plan.patient || "Patient"), start: plan.appointment.start, end: plan.appointment.end }, plan.patient);
+    }
+    ((plan && plan.calendar) || []).forEach((event) => add(event, plan && plan.patient));
+  });
+  ["clinician", "patient"].forEach((role) => {
+    const pack = typeof loadRoleCalendar === "function" ? loadRoleCalendar(role) : null;
+    ((pack && pack.events) || []).forEach((event) => add(event));
+  });
+  (((window.ELAK_SHARED_CAL || {}).events) || []).forEach((event) => add(event));
+  return out;
 }
 function eventBelongsToClinician(event) {
   const kind = calendarEventKind(event);
@@ -862,10 +903,14 @@ function paintRoleCalendar(root, status, role, plan) {
   if (who === "clinician" && typeof clinicVisitEvents === "function") {
     fake.calendar = (fake.calendar || []).concat(clinicVisitEvents());
   }
+  if (who === "clinician") fake.calendar = (fake.calendar || []).concat(clinicNextVisitEvents());
   fake.calendar = dedupeCalendarEvents(fake.calendar, plan || fake, who);
-  const visible = typeof calendarSummary === "function"
+  let visible = typeof calendarSummary === "function"
     ? dedupeCalendarEvents(calendarSummary(fake, who), plan || fake, who)
     : fake.calendar;
+  if (who === "clinician") {
+    visible = dedupeCalendarEvents(visible.concat(clinicNextVisitEvents()), plan || fake, who);
+  }
   if (status) {
     const n = visible.length;
     const visit = visible.filter((event) => calendarEventKind(event) === "visit").sort((a, b) => String(a.start).localeCompare(String(b.start)))[0];

@@ -932,9 +932,13 @@ function renderClinicOwnCalendar() {
 }
 async function loadClinicCalendar() {
   startCalendarWatch();
-  if (typeof pullLiveCalendar === "function") {
-    pullLiveCalendar(false).then(() => renderClinicOwnCalendar()).catch(() => renderClinicOwnCalendar());
-  }
+  const shared = typeof loadSharedElakCalendar === "function" ? loadSharedElakCalendar() : Promise.resolve(null);
+  const live = typeof pullLiveCalendar === "function" ? pullLiveCalendar(false) : Promise.resolve(null);
+  Promise.all([shared, live]).then((rows) => {
+    const pack = rows[0];
+    if (pack && typeof adoptSharedVisits === "function") adoptSharedVisits(pack.events || []);
+    renderClinicOwnCalendar();
+  }).catch(() => renderClinicOwnCalendar());
 }
 function healthEngine() {
   return import("./health-report/js/engine.js?v=4");

@@ -610,12 +610,14 @@ function writeAcceptedEvents(plan, cycle) {
     if (visit && slotDay >= visit) continue;
     const start = new Date(slot.start);
     const end = new Date(start.getTime() + cycle.minutes * 60000);
+    const startISO = typeof isoLocal === "function" ? isoLocal(start) : start.toISOString();
+    const endISO = typeof isoLocal === "function" ? isoLocal(end) : end.toISOString();
     kept.push({
       source: "elak",
       who: "patient",
-      title: "ELAK ankle practice",
-      start: start.toISOString(),
-      end: end.toISOString(),
+      title: "ELAK ankle practice" + (cur.patient ? " · " + cur.patient : ""),
+      start: startISO,
+      end: endISO,
       slotId: slot.id
     });
   }

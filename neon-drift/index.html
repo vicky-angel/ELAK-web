@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Kale's Revenge</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%232a160c'/%3E%3Cpath d='M16 6c-4 4-8 7-8 12a8 8 0 0016 0c0-5-4-8-8-12z' fill='%23e23d32'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --ink: #1a120c;
+    --wood: #6b4423;
+    --wood-deep: #3d2414;
+    --plank: #c4894a;
+    --cream: #f6e7c8;
+    --dim: #d7c4a4;
+    --gold: #f0c14a;
+    --moss: #7dce55;
+    --bg: #14210f;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--cream);
+    font-family: ui-monospace, "Courier New", Courier, monospace;
+    overflow: hidden;
+  }
+
+  canvas {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    background: #1d3a18;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+
+  body.playing { cursor: none; }
+  body.playing #mute { cursor: pointer; }
+
+  #mute {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 6;
+    pointer-events: auto;
+    background: var(--wood);
+    color: var(--cream);
+    border: 3px solid var(--ink);
+    box-shadow: inset 0 0 0 2px var(--plank);
+    border-radius: 0;
+    padding: 8px 12px;
+    letter-spacing: 0.12em;
+    font: 700 11px/1 ui-monospace, "Courier New", monospace;
+    cursor: pointer;
+  }
+
+  #mute.is-off { color: #a89880; }
+
+  #mute:hover, #mute:focus-visible { outline: none; background: #7d5230; }
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    overflow: auto;
+    background: rgba(16, 10, 6, 0.45);
+  }
+
+  #screen-start.overlay {
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 14px;
+    background: transparent;
+    pointer-events: none;
+  }
+
+  .overlay.hidden { display: none; }
+
+  .card {
+    width: min(520px, 100%);
+    padding: 16px 18px 14px;
+    border-radius: 0;
+    background: var(--wood);
+    color: var(--cream);
+    border: 4px solid var(--ink);
+    box-shadow:
+      inset 0 0 0 3px var(--plank),
+      inset 0 0 0 7px var(--wood-deep),
+      4px 4px 0 var(--ink);
+    text-align: center;
+    pointer-events: auto;
+  }
+
+  .eyebrow {
+    margin: 0 0 4px;
+    color: var(--gold);
+    letter-spacing: 0.28em;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(36px, 7vw, 58px);
+    line-height: 0.9;
+    letter-spacing: 0.08em;
+    font-weight: 800;
+    color: #fff6df;
+    text-shadow: 3px 3px 0 var(--ink);
+  }
+
+  .rule {
+    height: 4px;
+    margin: 10px auto 8px;
+    width: min(220px, 70%);
+    border: 0;
+    background: var(--ink);
+    box-shadow: 0 3px 0 var(--plank);
+  }
+
+  .tag, .hint, .fine { color: var(--dim); margin: 0; }
+  .tag { font-size: 13px; }
+
+  .menu-best {
+    margin: 8px 0 0;
+    letter-spacing: 0.16em;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--gold);
+  }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 12px;
+    margin: 10px 0 4px;
+    text-align: left;
+    font-size: 13px;
+  }
+
+  .controls div {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 24px;
+  }
+
+  .controls span { color: var(--dim); }
+
+  kbd {
+    display: inline-block;
+    min-width: 1.4em;
+    padding: 1px 5px;
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    background: #2a1a10;
+    color: var(--cream);
+    font: 700 11px/1.4 ui-monospace, "Courier New", monospace;
+    text-align: center;
+    box-shadow: 0 2px 0 #0c0806;
+  }
+
+  .legend {
+    display: block;
+    margin: 8px 0 10px;
+    text-align: left;
+  }
+
+  .legend h3 {
+    margin: 0 0 4px;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    color: var(--gold);
+  }
+
+  .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 3px 0;
+    font-size: 12px;
+  }
+
+  .spike {
+    width: 0;
+    height: 0;
+    flex: none;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-bottom: 10px solid currentColor;
+  }
+
+  .spike.mag { color: #e07aa8; }
+  .spike.cyan { color: #8fd0c8; }
+  .spike.vio { color: #b9a0e0; }
+  .spike.mint { color: var(--moss); }
+  .spike.rock { color: #9aa6b2; }
+  .spike.boss { color: #e23d32; }
+
+  .bun {
+    width: 12px;
+    height: 12px;
+    flex: none;
+    border-radius: 0;
+    background: #f4d7c4;
+    border: 2px solid var(--ink);
+    box-shadow: inset -3px -3px 0 #c4a08a;
+  }
+
+  .bun.ham { background: #e8c48a; }
+
+  button.action, button.ghost {
+    appearance: none;
+    border-radius: 0;
+    cursor: pointer;
+    font-family: ui-monospace, "Courier New", monospace;
+  }
+
+  button.action {
+    background: var(--gold);
+    color: var(--ink);
+    border: 3px solid var(--ink);
+    box-shadow: inset 0 -4px 0 #a87420, 3px 3px 0 var(--ink);
+    padding: 10px 28px;
+    letter-spacing: 0.16em;
+    font: 800 14px/1 ui-monospace, "Courier New", monospace;
+  }
+
+  button.action:hover, button.action:focus-visible {
+    background: #ffe08a;
+    outline: none;
+  }
+
+  button.ghost {
+    background: var(--wood-deep);
+    color: var(--cream);
+    border: 3px solid var(--ink);
+    padding: 10px 18px;
+    letter-spacing: 0.12em;
+    font: 700 13px/1 ui-monospace, "Courier New", monospace;
+  }
+
+  button.ghost:hover, button.ghost:focus-visible { outline: none; background: #2a1a10; }
+
+  .row {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+
+  .hint { margin-top: 8px; font-size: 11px; letter-spacing: 0.08em; }
+  .fine { margin-top: 8px; font-size: 11px; line-height: 1.45; }
+
+  .ups {
+    list-style: none;
+    margin: 8px 0 14px;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+  }
+
+  .ups li {
+    border: 2px solid var(--ink);
+    background: #2a160c;
+    color: var(--cream);
+    padding: 4px 8px;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+
+  h2 {
+    margin: 0;
+    letter-spacing: 0.16em;
+    font-size: clamp(22px, 4vw, 32px);
+    color: #fff6df;
+    text-shadow: 2px 2px 0 var(--ink);
+  }
+
+  .ribbon {
+    display: inline-block;
+    margin: 10px 0 0;
+    padding: 4px 10px;
+    color: var(--ink);
+    background: var(--gold);
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    letter-spacing: 0.14em;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .ribbon.hidden { display: none; }
+
+  .final-score {
+    margin: 8px 0 0;
+    font-size: clamp(36px, 7vw, 56px);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: #fff6df;
+    text-shadow: 3px 3px 0 var(--ink);
+  }
+
+  .final-best {
+    margin: 0 0 8px;
+    color: var(--gold);
+    letter-spacing: 0.14em;
+    font-weight: 700;
+    font-size: 13px;
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin: 8px 0 14px;
+  }
+
+  .stats div {
+    padding: 8px 4px;
+    background: var(--wood-deep);
+    border: 2px solid var(--ink);
+  }
+
+  .stats span { display: block; font-size: 20px; font-weight: 800; }
+  .stats small { color: var(--dim); letter-spacing: 0.12em; font-size: 10px; }
+
+  .card.wide { width: min(720px, 100%); }
+
+  .choices {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin: 12px 0 4px;
+  }
+
+  .choice {
+    appearance: none;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    min-height: 150px;
+    padding: 14px 10px 12px;
+    border-radius: 0;
+    background: var(--wood-deep);
+    border: 3px solid var(--ink);
+    box-shadow: inset 0 0 0 2px #5a3a22;
+    color: var(--cream);
+    cursor: pointer;
+    text-align: center;
+    font-family: ui-monospace, "Courier New", monospace;
+  }
+
+  .choice:hover, .choice:focus-visible {
+    background: #4a301c;
+    outline: none;
+  }
+
+  .choice-key {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    min-width: 1.4em;
+    padding: 2px 5px;
+    border: 2px solid var(--ink);
+    background: var(--gold);
+    color: var(--ink);
+    font: 800 11px/1.2 ui-monospace, "Courier New", monospace;
+  }
+
+  .choice-icon {
+    width: 32px;
+    height: 32px;
+    margin-top: 8px;
+    border-radius: 0;
+    background: #f4d7c4;
+    color: var(--ink);
+    border: 2px solid var(--ink);
+    font: 800 16px/28px ui-monospace, "Courier New", monospace;
+  }
+
+  .choice strong { letter-spacing: 0.04em; font-size: 14px; }
+  .choice em { font-style: normal; color: var(--dim); font-size: 12px; line-height: 1.35; }
+  .choice small { margin-top: auto; color: var(--gold); letter-spacing: 0.08em; font-size: 11px; }
+
+  .gun-card-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    margin-top: 8px;
+  }
+
+  .gun-card {
+    height: 28px;
+    width: auto;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+
+  .gun-card.pistol { height: 26px; }
+  .gun-card.sniper { height: 22px; }
+  .gun-card.rifle, .gun-card.mg { height: 26px; }
+
+  .home-card { width: min(920px, 100%); text-align: left; }
+
+  .home-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .home-head h1 { text-align: left; }
+
+  .point-panel {
+    min-width: 180px;
+    padding: 8px 12px 10px;
+    background: #1a120c;
+    border: 3px solid var(--ink);
+    box-shadow: inset 0 0 0 2px var(--plank);
+    text-align: center;
+  }
+
+  .point-available {
+    margin: 0;
+    font-size: 40px;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--gold);
+    text-shadow: 3px 3px 0 #000;
+  }
+
+  .point-split {
+    margin: 4px 0 0;
+    color: var(--dim);
+    letter-spacing: 0.08em;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .point-toast {
+    margin: 10px 0 0;
+    padding: 8px 10px;
+    background: var(--moss);
+    color: #14210f;
+    border: 3px solid var(--ink);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-align: center;
+  }
+
+  .point-toast.hidden { display: none; }
+
+  .home-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(200px, 0.7fr);
+    gap: 12px;
+    margin-top: 12px;
+    align-items: start;
+  }
+
+  .tree-label {
+    margin: 0 0 6px;
+    color: var(--gold);
+    letter-spacing: 0.16em;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .skill-row, .gun-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 32px 4.6em 32px;
+    gap: 6px;
+    align-items: center;
+    margin: 0 0 6px;
+    padding: 6px 8px;
+    background: var(--wood-deep);
+    border: 3px solid var(--ink);
+    text-align: left;
+  }
+
+  .gun-row { grid-template-columns: minmax(0, 1fr) 32px 4.6em 32px auto; }
+
+  .skill-row strong, .gun-row strong {
+    display: block;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+  }
+
+  .skill-row em, .gun-row em {
+    display: block;
+    margin-top: 2px;
+    font-style: normal;
+    color: var(--dim);
+    font-size: 11px;
+  }
+
+  .skill-val {
+    text-align: center;
+    color: var(--gold);
+    font-weight: 800;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+  }
+
+  button.step, button.use {
+    appearance: none;
+    border-radius: 0;
+    cursor: pointer;
+    font-family: ui-monospace, "Courier New", monospace;
+  }
+
+  button.step {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: var(--gold);
+    color: var(--ink);
+    border: 3px solid var(--ink);
+    font: 800 18px/1 ui-monospace, "Courier New", monospace;
+  }
+
+  button.step:disabled, button.use:disabled {
+    background: #5c4a34;
+    color: #2a1c12;
+    cursor: default;
+  }
+
+  button.use {
+    background: var(--cream);
+    color: var(--ink);
+    border: 3px solid var(--ink);
+    padding: 6px 8px;
+    letter-spacing: 0.08em;
+    font: 800 11px/1 ui-monospace, "Courier New", monospace;
+  }
+
+  button.use.is-on {
+    background: var(--gold);
+  }
+
+  .gun-row.is-start {
+    box-shadow: inset 0 0 0 2px var(--gold);
+  }
+
+  .home-play { text-align: center; }
+
+  .home-play .action { width: 100%; margin-top: 8px; }
+
+  .lore {
+    margin-top: 12px;
+    padding: 10px 12px 12px;
+    background: #1a120c;
+    border: 3px solid var(--ink);
+    box-shadow: inset 0 0 0 2px var(--plank);
+  }
+
+  .lore h3 {
+    margin: 0 0 6px;
+    color: var(--gold);
+    letter-spacing: 0.16em;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .lore p {
+    margin: 0 0 8px;
+    color: var(--cream);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .lore p:last-child { margin-bottom: 0; }
+
+  @media (max-width: 720px) {
+    .home-grid { grid-template-columns: 1fr; }
+    .home-play { order: -1; }
+    .gun-row { grid-template-columns: minmax(0, 1fr) 32px 4.2em 32px; }
+    .gun-row .use { grid-column: 1 / -1; }
+  }
+
+  @media (max-width: 560px) {
+    .controls, .choices { grid-template-columns: 1fr; }
+    .card { padding: 14px 12px 12px; }
+    .choice { min-height: 0; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game" width="1280" height="720" aria-hidden="true"></canvas>
+<button id="mute" type="button" aria-pressed="false">SFX ON</button>
+
+<div id="screen-start" class="overlay">
+  <div class="card home-card">
+    <div class="home-head">
+      <div>
+        <p class="eyebrow">FOREST CLEARING</p>
+        <h1>KALE'S<br>REVENGE</h1>
+      </div>
+      <div class="point-panel">
+        <p class="eyebrow">SKILL POINTS</p>
+        <p class="point-available" id="pts-available">0</p>
+        <p class="point-split">EARNED <span id="pts-earned">0</span> · SPENT <span id="pts-spent">0</span> · AVAILABLE <span id="pts-left">0</span></p>
+      </div>
+    </div>
+    <p id="point-toast" class="point-toast hidden"></p>
+    <div class="lore">
+      <h3>BACKGROUND STORY</h3>
+      <p>The forest used to be quiet. Kale kept one ring of old trees, a patch of grass, and a path home. Then the deer came, and night came with it. Rabbits leapt the ring. Hamsters tore the soil. The trees still stand, but they will not hold without a knight.</p>
+      <p>Kale is not finished. Each day of practice forges a skill point: a faster step, a tougher heart, a sprout companion, a better gun. Spend those points before the next stand. Five waves. When the fifth begins, dusk drops and the deer charges.</p>
+      <p>Hold the clearing, and the woods keep their knight.</p>
+    </div>
+    <div class="home-grid">
+      <div>
+        <p class="tree-label">SKILL TREE</p>
+        <div id="skill-tree"></div>
+      </div>
+      <div class="home-play">
+        <p class="menu-best">BEST <span id="menu-best">0</span></p>
+        <p class="hint" id="menu-meta">RUNS 0 · WINS 0</p>
+        <button id="btn-play" class="action" type="button">PLAY</button>
+        <p class="hint">ENTER TO PLAY</p>
+        <p class="fine">WASD move, mouse aim, click or Space to fire, Shift to roll. Five waves. This tree is your whole build. Between waves, hearts and armor refill, then 3-2-1. Wave 5 is the deer.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="screen-pause" class="overlay hidden">
+  <div class="card">
+    <p class="eyebrow">HOLDING</p>
+    <h2>PAUSED</h2>
+    <hr class="rule">
+    <p class="tag">The clearing waits. Your combo does not.</p>
+    <div class="row" style="margin-top:18px">
+      <button id="btn-resume" class="action" type="button">RESUME</button>
+    </div>
+    <p class="hint">P / ESC / ENTER</p>
+  </div>
+</div>
+
+<div id="screen-win" class="overlay hidden">
+  <div class="card">
+    <p class="eyebrow">CLEARING HELD</p>
+    <h2>VICTORY</h2>
+    <hr class="rule">
+    <p class="tag">The deer is down. The trees keep their knight.</p>
+    <p class="final-score" id="win-score">0</p>
+    <div class="stats">
+      <div><span id="win-time">0:00</span><small>TIME</small></div>
+      <div><span id="win-kills">0</span><small>KILLS</small></div>
+      <div><span id="win-wave">5/5</span><small>WAVES</small></div>
+    </div>
+    <p class="eyebrow">LOADOUT</p>
+    <ul id="win-ups" class="ups"></ul>
+    <div class="row">
+      <button id="btn-win-again" class="action" type="button">PLAY AGAIN</button>
+      <button id="btn-win-menu" class="ghost" type="button">MENU</button>
+    </div>
+    <p class="hint">ENTER TO PLAY AGAIN</p>
+  </div>
+</div>
+
+<div id="screen-over" class="overlay hidden">
+  <div class="card">
+    <p class="eyebrow">FALLEN</p>
+    <h2>GAME OVER</h2>
+    <p id="over-ribbon" class="ribbon hidden">NEW BEST</p>
+    <p class="final-score" id="over-score">0</p>
+    <p class="final-best">BEST <span id="over-best">0</span></p>
+    <div class="stats">
+      <div><span id="over-wave">1</span><small>WAVE</small></div>
+      <div><span id="over-kills">0</span><small>KILLS</small></div>
+      <div><span id="over-combo">x0</span><small>BEST COMBO</small></div>
+    </div>
+    <div class="row">
+      <button id="btn-restart" class="action" type="button">AGAIN</button>
+      <button id="btn-menu" class="ghost" type="button">MENU</button>
+    </div>
+    <p class="hint">ENTER TO RESTART</p>
+  </div>
+</div>
+
+<noscript><p style="position:fixed;inset:0;padding:32px;color:#f6e7c8;background:#14210f">Kale's Revenge needs JavaScript. It still runs offline — just enable JavaScript and reopen this file.</p></noscript>
+<script src="points.js"></script>
+<script src="elak-plugin.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

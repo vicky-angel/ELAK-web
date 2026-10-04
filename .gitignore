@@ -1,0 +1,8 @@
+.env
+.env.*
+*.local.js
+node_modules/
+__pycache__/
+.DS_Store
+data/device-calendar-live.json
+data/device-calendar-write.json

@@ -912,20 +912,20 @@ function renderClinicCalendar() {
 function renderClinicOwnCalendar() {
   const box = $c("clinic-home-cal");
   const btn = $c("clinic-home-cal-btn");
-  if (typeof calendarConsentOn === "function" && !calendarConsentOn("clinician")) {
-    if (box) {
-      box.hidden = true;
-      box.replaceChildren();
-    }
-    return;
-  }
   if (box) box.hidden = false;
+  if (typeof window.ELAK_CLINIC_CAL_OPEN === "undefined") window.ELAK_CLINIC_CAL_OPEN = true;
   if (box && btn) {
     const open = !!window.ELAK_CLINIC_CAL_OPEN;
     box.classList.toggle("open", open);
     btn.setAttribute("aria-expanded", String(open));
   }
   paintRoleCalendar($c("clinic-home-cal-table"), $c("clinic-home-cal-status"), "clinician");
+  const status = $c("clinic-home-cal-status");
+  if (status && !status.textContent) {
+    status.textContent = (typeof calendarConsentOn === "function" && calendarConsentOn("clinician"))
+      ? "Showing booked visits. Laptop Calendar.app only syncs on this computer when the calendar helper is running."
+      : "Showing booked visits.";
+  }
 }
 async function loadClinicCalendar() {
   if (typeof calendarConsentOn === "function" && !calendarConsentOn("clinician")) return;

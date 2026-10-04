@@ -79,7 +79,38 @@ function eventCals(store) {
 }
 
 function destCalendar(store) {
-  return store.defaultCalendarForNewEvents || (Number(eventCals(store).count) ? eventCals(store).objectAtIndex(0) : null);
+  const cals = eventCals(store);
+  const fallback = store.defaultCalendarForNewEvents || (Number(cals.count) ? cals.objectAtIndex(0) : null);
+  if (!Number(cals.count)) return fallback;
+  const start = $.NSDate.dateWithTimeIntervalSinceNow(-21 * 86400);
+  const end = $.NSDate.dateWithTimeIntervalSinceNow(21 * 86400);
+  const pred = store.predicateForEventsWithStartDateEndDateCalendars(start, end, cals);
+  const evs = store.eventsMatchingPredicate(pred);
+  let lifeCal = null;
+  const counts = {};
+  const byId = {};
+  for (let i = 0; i < Number(evs.count); i++) {
+    const ev = evs.objectAtIndex(i);
+    const title = unwrap(ev.title);
+    const notes = unwrap(ev.notes);
+    const uid = unwrap(ev.eventIdentifier);
+    const cal = ev.calendar;
+    if (!cal) continue;
+    if (/ELAK|next visit/i.test(title) || /elak:/i.test(notes) || /elak-/i.test(uid)) continue;
+    const id = unwrap(cal.calendarIdentifier) || unwrap(cal.title);
+    counts[id] = (counts[id] || 0) + 1;
+    byId[id] = cal;
+    if (/^life(\b|[.\s]|$)/i.test(title)) lifeCal = cal;
+  }
+  if (lifeCal) return lifeCal;
+  let best = "", n = 0;
+  Object.keys(counts).forEach((id) => {
+    if (counts[id] > n) {
+      n = counts[id];
+      best = id;
+    }
+  });
+  return (best && byId[best]) || fallback;
 }
 
 function readEvents() {

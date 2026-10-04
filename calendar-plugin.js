@@ -472,11 +472,27 @@ async function pickIcsFromDevice() {
     input.click();
   });
 }
+async function askLocalCalendarAccess() {
+  if (window.ELAK_CAL_LNA) return window.ELAK_CAL_LNA;
+  window.ELAK_CAL_LNA = Promise.resolve(false);
+  try {
+    if (navigator.permissions && navigator.permissions.query) {
+      const status = await navigator.permissions.query({ name: "local-network-access" });
+      window.ELAK_CAL_LNA = Promise.resolve(status.state !== "denied");
+    }
+  } catch (err) {
+    window.ELAK_CAL_LNA = Promise.resolve(true);
+  }
+  return window.ELAK_CAL_LNA;
+}
 async function fetchCalendarJson(url, ms) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms || 4000);
   try {
-    const res = await fetch(url, { cache: "no-store", signal: ctrl.signal });
+    if (/127\.0\.0\.1|localhost/i.test(String(url || ""))) await askLocalCalendarAccess();
+    const opts = { cache: "no-store", signal: ctrl.signal, mode: "cors" };
+    try { opts.targetAddressSpace = "loopback"; } catch (err) { /* older browsers */ }
+    const res = await fetch(url, opts);
     if (!res.ok) return null;
     return await res.json();
   } catch (err) {
@@ -1267,11 +1283,15 @@ async function pushLaptopCalendarNow(plan) {
   try {
     for (const url of laptopCalendarUrls()) {
       try {
-        const res = await fetch(url, {
+        if (/127\.0\.0\.1|localhost/i.test(url)) await askLocalCalendarAccess();
+        const postOpts = {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
+          body: JSON.stringify(payload),
+          mode: "cors"
+        };
+        try { postOpts.targetAddressSpace = "loopback"; } catch (err) { /* older browsers */ }
+        const res = await fetch(url, postOpts);
         if (!res.ok) continue;
         const data = await res.json();
         if (data && data.ok) {
@@ -1385,10 +1405,8 @@ function notifyPracticePlan(plan) {
   if (!patientHas) pushInbox("patient", plan.username, note);
 }
 function eventsOnDay(events, key) {
-  return (events || []).filter((event) => {
-    if (calendarDayKey(event.start) === key) return true;
-    return String(event.start || "").slice(0, 10) === key;
-  }).sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  return (events || []).filter((event) => calendarDayKey(event.start) === key)
+    .sort((a, b) => String(a.start).localeCompare(String(b.start)));
 }
 function shiftDay(key, delta) {
   const parts = String(key || "").split("-").map(Number);

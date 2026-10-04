@@ -1569,7 +1569,7 @@
 <video id="cam" playsinline muted hidden></video>
 
 <script src="shared.js?v=89"></script>
-<script src="calendar-plugin.js?v=103"></script>
+<script src="calendar-plugin.js?v=104"></script>
 <script src="agent.js?v=98"></script>
 <script src="kale-config.js?v=1"></script>
 <script src="buddy.js?v=101"></script>
@@ -2210,7 +2210,6 @@ function renderHomeCalendar(plan) {
   const pane = mountHomeFold(root, "calendar", "Calendar");
   let status = pane.querySelector("#home-cal-status");
   let table = pane.querySelector("#home-cal-table");
-  let add = pane.querySelector("#home-cal-add");
   if (!status || !table) {
     pane.replaceChildren();
     status = document.createElement("p");
@@ -2218,21 +2217,12 @@ function renderHomeCalendar(plan) {
     status.id = "home-cal-status";
     table = document.createElement("div");
     table.id = "home-cal-table";
-    add = document.createElement("button");
-    add.type = "button";
-    add.className = "secondary";
-    add.id = "home-cal-add";
-    add.style.marginTop = "10px";
-    add.textContent = "Add these times to this device";
-    add.addEventListener("click", () => {
-      const events = typeof calendarSummary === "function"
-        ? calendarSummary({ calendar: (typeof elakPlanEvents === "function" ? elakPlanEvents(plan) : []).concat(plan.calendar || []) }, "patient")
-        : (plan.calendar || []);
-      if (typeof downloadElakIcs === "function") downloadElakIcs(plan, events);
-    });
-    pane.append(status, table, add);
+    pane.append(status, table);
   }
+  const add = pane.querySelector("#home-cal-add");
+  if (add) add.remove();
   paintRoleCalendar(table, status, "patient", plan);
+  if (typeof syncLaptopCalendar === "function") syncLaptopCalendar(plan);
 }
 function renderHomeStories(plan) {
   const root = $("home-story");

@@ -62,6 +62,10 @@ function setPatientArchived(code, archived) {
   plan.archived = !!archived;
   plan.updated = new Date().toISOString();
   savePlans(data);
+  if (archived && typeof removePatientFromCalendars === "function") {
+    removePatientFromCalendars(plan);
+  }
+  if (typeof renderClinicOwnCalendar === "function") renderClinicOwnCalendar();
   return plan;
 }
 function syncTabs() {
@@ -924,7 +928,14 @@ function renderClinicOwnCalendar() {
     clinicianCalendar: typeof loadRoleCalendar === "function" ? loadRoleCalendar("clinician") : null,
     patientCalendar: null
   };
+  if (typeof loadSharedElakCalendar === "function" && !window.ELAK_SHARED_CAL) {
+    loadSharedElakCalendar().then(() => {
+      if (typeof ensureCurrentPatientVisits === "function") ensureCurrentPatientVisits();
+      paintRoleCalendar($c("clinic-home-cal-table"), $c("clinic-home-cal-status"), "clinician", clinicCal);
+    }).catch(() => {});
+  }
   paintRoleCalendar($c("clinic-home-cal-table"), $c("clinic-home-cal-status"), "clinician", clinicCal);
+  if (typeof syncLaptopCalendar === "function") syncLaptopCalendar({ _all: true });
   const status = $c("clinic-home-cal-status");
   if (status && !status.textContent) {
     status.textContent = "Showing booked visits and practice times.";

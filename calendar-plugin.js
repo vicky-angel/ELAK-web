@@ -503,12 +503,19 @@ function isSharedCalendarPack(pack, url) {
   return source === "elak-shared" || source === "elak" || /elak-calendar\.json|raw\.githubusercontent/i.test(String(url || ""));
 }
 function clinicianCalendarPlans() {
+  if (typeof listedPlans === "function" && typeof clinic !== "undefined") {
+    const prev = clinic.listMode;
+    clinic.listMode = "current";
+    const rows = listedPlans();
+    clinic.listMode = prev;
+    return rows.filter((plan) => plan && !plan.archived);
+  }
   const data = typeof loadPlans === "function" ? loadPlans() : { plans: {} };
   const mine = typeof authRecord === "function" && authRecord() ? authRecord().id : "";
   return Object.values(data.plans || {}).filter((plan) => {
     if (!plan || plan.archived) return false;
-    if (mine) return !plan.clinicianId || plan.clinicianId === mine;
-    return false;
+    if (!mine) return true;
+    return !plan.clinicianId || plan.clinicianId === mine;
   });
 }
 function clinicianPatientNeedles() {
@@ -533,27 +540,58 @@ async function loadSharedElakCalendar() {
   } catch (err) { /* keep going */ }
   return { events: [] };
 }
+function eventMatchesPatient(event, plan) {
+  const names = [plan && plan.patient, plan && plan.username]
+    .map((value) => String(value || "").toLowerCase().trim())
+    .filter((value) => value.length >= 2);
+  if (!names.length) return false;
+  const title = String((event && event.title) || "").toLowerCase();
+  const person = eventPerson(event);
+  return names.some((n) => title.includes(n) || person === n || (person && (person.includes(n) || n.includes(person))));
+}
+function ensureCurrentPatientVisits() {
+  const shared = ((window.ELAK_SHARED_CAL || {}).events) || [];
+  const data = typeof loadPlans === "function" ? loadPlans() : { plans: {} };
+  let changed = false;
+  clinicianCalendarPlans().forEach((plan) => {
+    if (!plan || (plan.appointment && plan.appointment.start)) return;
+    const hit = shared.find((event) => /next visit/i.test(event.title || "") && eventMatchesPatient(event, plan));
+    if (!hit || !hit.start) return;
+    const cur = (plan.code && data.plans[plan.code]) || plan;
+    cur.appointment = {
+      start: hit.start,
+      end: hit.end || hit.start,
+      patientSeen: false,
+      clinicianSeen: false
+    };
+    if (typeof keepVisitOnCalendar === "function") keepVisitOnCalendar(cur);
+    if (cur.code && data.plans[cur.code]) data.plans[cur.code] = cur;
+    changed = true;
+  });
+  if (changed && typeof savePlans === "function") savePlans(data);
+}
 function clinicNextVisitEvents() {
+  ensureCurrentPatientVisits();
   const out = [];
   const seen = {};
-  function add(event, fallbackName) {
+  function add(event, fallbackName, owned) {
     if (!event || !event.start) return;
     const title = String(event.title || "");
     const isVisit = calendarEventKind(event) === "visit" || /next visit/i.test(title);
     if (!isVisit) return;
     const named = title.indexOf("Next visit") === 0 ? title : ("Next visit" + (fallbackName ? " · " + fallbackName : (eventPerson(event) ? " · " + eventPerson(event) : "")));
     const row = { source: "elak", who: "both", title: named, start: event.start, end: event.end || event.start };
-    if (typeof eventBelongsToClinician === "function" && !eventBelongsToClinician(row)) return;
-    const key = calendarStartKey(row) + "|" + eventPerson(row);
+    if (!owned && typeof eventBelongsToClinician === "function" && !eventBelongsToClinician(row)) return;
+    const key = calendarStartKey(row) + "|" + (eventPerson(row) || fallbackName || "");
     if (seen[key]) return;
     seen[key] = true;
     out.push(row);
   }
   (typeof clinicianCalendarPlans === "function" ? clinicianCalendarPlans() : []).forEach((plan) => {
     if (plan && plan.appointment && plan.appointment.start) {
-      add({ title: "Next visit · " + (plan.patient || "Patient"), start: plan.appointment.start, end: plan.appointment.end }, plan.patient);
+      add({ title: "Next visit · " + (plan.patient || "Patient"), start: plan.appointment.start, end: plan.appointment.end }, plan.patient, true);
     }
-    ((plan && plan.calendar) || []).forEach((event) => add(event, plan && plan.patient));
+    ((plan && plan.calendar) || []).forEach((event) => add(event, plan && plan.patient, true));
   });
   ["clinician", "patient"].forEach((role) => {
     const pack = typeof loadRoleCalendar === "function" ? loadRoleCalendar(role) : null;
@@ -909,7 +947,14 @@ function paintRoleCalendar(root, status, role, plan) {
     ? dedupeCalendarEvents(calendarSummary(fake, who), plan || fake, who)
     : fake.calendar;
   if (who === "clinician") {
-    visible = dedupeCalendarEvents(visible.concat(clinicNextVisitEvents()), plan || fake, who);
+    clinicNextVisitEvents().forEach((event) => visible.push(event));
+    const seen = {};
+    visible = visible.filter((event) => {
+      const key = String(event.title || "") + "|" + calendarStartKey(event);
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
   }
   if (status) {
     const n = visible.length;
@@ -1105,11 +1150,12 @@ function clinicLaptopCalendarEvents() {
 async function pushLaptopCalendar(plan) {
   const clinicAll = !plan || plan === true || (plan && plan._all) || (typeof pageCalendarRole === "function" && pageCalendarRole() === "clinician");
   const events = clinicAll ? clinicLaptopCalendarEvents() : laptopCalendarEvents(plan);
-  if (!events.length) return null;
+  if (!events.length && !(plan && plan._purge)) return null;
   const payload = {
     tag: clinicAll ? "elak:clinic" : laptopCalendarTag(plan),
     events: events,
-    replaceElak: true
+    replaceElak: true,
+    purgeIfEmpty: !!(plan && plan._purge)
   };
   for (const url of laptopCalendarUrls()) {
     try {
@@ -1127,14 +1173,37 @@ async function pushLaptopCalendar(plan) {
   }
   return null;
 }
+function eventIsForPlan(event, plan) {
+  return eventMatchesPatient(event, plan);
+}
+function removePatientFromCalendars(plan) {
+  if (!plan) return;
+  ["clinician", "patient"].forEach((role) => {
+    const pack = typeof loadRoleCalendar === "function" ? loadRoleCalendar(role) : null;
+    if (!pack || !Array.isArray(pack.events)) return;
+    pack.events = pack.events.filter((event) => !eventIsForPlan(event, plan));
+    saveRoleCalendar(role, pack);
+  });
+  plan.calendar = (plan.calendar || []).filter((event) => event.source !== "elak");
+  plan.appointment = null;
+  if (plan.cycle && Array.isArray(plan.cycle.slots)) {
+    plan.cycle.slots = plan.cycle.slots.map((slot) => Object.assign({}, slot, { start: "", status: "offer" }));
+  }
+  if (typeof loadPlans === "function" && plan.code) {
+    const data = loadPlans();
+    if (data.plans[plan.code]) {
+      data.plans[plan.code] = plan;
+      savePlans(data);
+    }
+  }
+  pushLaptopCalendar({ _all: true, _purge: true }).catch(() => {});
+}
 function syncLaptopCalendar(plan) {
   if (typeof pageCalendarRole === "function" && pageCalendarRole() === "clinician") {
     pushLaptopCalendar({ _all: true }).catch(() => {});
     return;
   }
   if (!plan) return;
-  if (typeof calendarConsentOn === "function" && !calendarConsentOn()) return;
-  if (plan.calendarConsent === false) return;
   pushLaptopCalendar(plan).catch(() => {});
 }
 function notifyAppointment(plan, appt) {
@@ -1179,8 +1248,10 @@ function notifyPracticePlan(plan) {
   if (!patientHas) pushInbox("patient", plan.username, note);
 }
 function eventsOnDay(events, key) {
-  return (events || []).filter((event) => calendarDayKey(event.start) === key)
-    .sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  return (events || []).filter((event) => {
+    if (calendarDayKey(event.start) === key) return true;
+    return String(event.start || "").slice(0, 10) === key;
+  }).sort((a, b) => String(a.start).localeCompare(String(b.start)));
 }
 function shiftDay(key, delta) {
   const parts = String(key || "").split("-").map(Number);

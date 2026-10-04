@@ -643,6 +643,8 @@
   .overlay .card.mail-card { width: min(560px, 100%); }
   #mail-kale { margin: 14px 0 8px; }
   #mail-kale .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  #mail-kale-reason-wrap { margin: 8px 0 0; }
+  #mail-kale-reason { width: 100%; min-height: 72px; }
   .cal-wrap { max-height: 320px; overflow: auto; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,250,242,0.55); margin-top: 14px; }
   #screen-title.on {
     display: grid;
@@ -1458,9 +1460,14 @@
     </div>
     <div id="mail-kale" hidden>
       <p class="note" id="mail-kale-msg"></p>
+      <div class="field" id="mail-kale-reason-wrap" hidden>
+        <label for="mail-kale-reason" id="mail-kale-reason-label">Reason</label>
+        <textarea id="mail-kale-reason" rows="3"></textarea>
+      </div>
       <div class="row" id="mail-kale-actions">
         <button class="primary" id="mail-kale-agree" type="button">Agree</button>
         <button class="secondary" id="mail-kale-disagree" type="button">Disagree</button>
+        <button class="primary" id="mail-kale-appeal" type="button" hidden>Reappeal</button>
       </div>
     </div>
     <div class="row">
@@ -1569,10 +1576,10 @@
 <video id="cam" playsinline muted hidden></video>
 
 <script src="shared.js?v=89"></script>
-<script src="calendar-plugin.js?v=106"></script>
+<script src="calendar-plugin.js?v=107"></script>
 <script src="agent.js?v=99"></script>
 <script src="kale-config.js?v=1"></script>
-<script src="buddy.js?v=102"></script>
+<script src="buddy.js?v=103"></script>
 <script>
 const SAVE_KEY = "full-range-v1";
 const UP = 0.40;
@@ -2222,7 +2229,6 @@ function renderHomeCalendar(plan) {
   const add = pane.querySelector("#home-cal-add");
   if (add) add.remove();
   paintRoleCalendar(table, status, "patient", plan);
-  if (typeof syncLaptopCalendar === "function") syncLaptopCalendar(plan);
 }
 function renderHomeStories(plan) {
   const root = $("home-story");

@@ -487,7 +487,17 @@ function kaleFileRequest(plan, draft, patientNote) {
     savePlans(data);
     cur = data.plans[live.code] || live;
   }
-  if (typeof pushInbox === "function") {
+  if (typeof upsertInbox === "function") {
+    upsertInbox("clinic", cur.username, (row) => row.type === "kale-request" && row.requestId === req.id, {
+      type: "kale-request",
+      patient: cur.patient,
+      subject: "Home exercise change request",
+      body: typeof kaleInboxBody === "function" ? kaleInboxBody(cur, req) : ((cur.patient || "Patient") + " asked Kale to change home practice.\n\n" + req.summary + "\n\nThey wrote: " + (req.patientNote || req.reason)),
+      requestId: req.id,
+      request: req,
+      status: "pending"
+    });
+  } else if (typeof pushInbox === "function") {
     pushInbox("clinic", cur.username, {
       type: "kale-request",
       patient: cur.patient,
@@ -499,7 +509,6 @@ function kaleFileRequest(plan, draft, patientNote) {
       status: "pending"
     });
   }
-  if (typeof sendDesktopNotice === "function") sendDesktopNotice("Home exercise change request", cur.patient || "");
   if (typeof paintNotesDot === "function") paintNotesDot();
   return { req, already: false };
 }

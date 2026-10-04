@@ -389,6 +389,8 @@
   }
   #mail-kale { margin: 14px 0 8px; }
   #mail-kale .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  #mail-kale-reason-wrap { margin: 8px 0 0; }
+  #mail-kale-reason { width: 100%; min-height: 72px; }
   #clinic-notes, #clinic-reports { max-width: 720px; margin: 0 auto; }
   .report-group {
     background: #fff;
@@ -687,9 +689,14 @@
       </div>
       <div id="mail-kale" hidden>
         <p class="note" id="mail-kale-msg"></p>
+        <div class="field" id="mail-kale-reason-wrap" hidden>
+          <label for="mail-kale-reason" id="mail-kale-reason-label">Reason</label>
+          <textarea id="mail-kale-reason" rows="3"></textarea>
+        </div>
         <div class="row" id="mail-kale-actions">
           <button class="primary" id="mail-kale-agree" type="button">Agree</button>
           <button class="secondary" id="mail-kale-disagree" type="button">Disagree</button>
+          <button class="primary" id="mail-kale-appeal" type="button" hidden>Reappeal</button>
         </div>
       </div>
     </div>
@@ -708,10 +715,10 @@
   </div>
 </div>
 <script src="shared.js?v=89"></script>
-<script src="calendar-plugin.js?v=106"></script>
+<script src="calendar-plugin.js?v=107"></script>
 <script src="agent.js?v=99"></script>
-<script src="clinic.js?v=105"></script>
+<script src="clinic.js?v=106"></script>
 <script src="kale-config.js?v=1"></script>
-<script src="buddy.js?v=102"></script>
+<script src="buddy.js?v=103"></script>
 </body>
 </html>

@@ -1174,31 +1174,66 @@ function clinicLaptopCalendarEvents() {
   (pack.events || []).forEach(add);
   return typeof dedupeCalendarEvents === "function" ? dedupeCalendarEvents(out, null, "clinician") : out;
 }
-async function pushLaptopCalendar(plan) {
+function laptopEventsStamp(events, purge) {
+  return (purge ? "purge|" : "") + (events || []).map((event) => (event.title || "") + "|" + (event.start || "") + "|" + (event.end || "")).join("\n");
+}
+async function pushLaptopCalendarNow(plan) {
   const clinicAll = !plan || plan === true || (plan && plan._all) || (typeof pageCalendarRole === "function" && pageCalendarRole() === "clinician");
   const events = clinicAll ? clinicLaptopCalendarEvents() : laptopCalendarEvents(plan);
   if (!events.length && !(plan && plan._purge)) return null;
+  const stamp = laptopEventsStamp(events, !!(plan && plan._purge));
+  if (!(plan && plan._purge) && stamp && stamp === window.ELAK_CAL_WRITE_STAMP) {
+    return { ok: true, skipped: "unchanged" };
+  }
+  if (window.ELAK_CAL_WRITING) {
+    window.ELAK_CAL_WRITE_AGAIN = plan;
+    return null;
+  }
+  window.ELAK_CAL_WRITING = true;
   const payload = {
     tag: clinicAll ? "elak:clinic" : laptopCalendarTag(plan),
     events: events,
     replaceElak: true,
     purgeIfEmpty: !!(plan && plan._purge)
   };
-  for (const url of laptopCalendarUrls()) {
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) continue;
-      const data = await res.json();
-      if (data && data.ok) return data;
-    } catch (err) {
-      /* try the next calendar API */
+  try {
+    for (const url of laptopCalendarUrls()) {
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (data && data.ok) {
+          window.ELAK_CAL_WRITE_STAMP = stamp;
+          return data;
+        }
+      } catch (err) {
+        /* try the next calendar API */
+      }
     }
+    return null;
+  } finally {
+    window.ELAK_CAL_WRITING = false;
+    const again = window.ELAK_CAL_WRITE_AGAIN;
+    window.ELAK_CAL_WRITE_AGAIN = null;
+    if (again) pushLaptopCalendarNow(again).catch(() => {});
   }
-  return null;
+}
+function pushLaptopCalendar(plan) {
+  if (plan && plan._purge) return pushLaptopCalendarNow(plan);
+  window.ELAK_CAL_PUSH_PLAN = plan;
+  if (window.ELAK_CAL_PUSH_TIMER) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    window.ELAK_CAL_PUSH_TIMER = setTimeout(() => {
+      window.ELAK_CAL_PUSH_TIMER = 0;
+      const pending = window.ELAK_CAL_PUSH_PLAN;
+      window.ELAK_CAL_PUSH_PLAN = null;
+      pushLaptopCalendarNow(pending).then(resolve).catch(() => resolve(null));
+    }, 1600);
+  });
 }
 function eventIsForPlan(event, plan) {
   return eventMatchesPatient(event, plan);
@@ -1436,47 +1471,118 @@ function kaleRequestOf(item) {
   return { plan, req: null };
 }
 
+function kaleReasonValue() {
+  const input = document.getElementById("mail-kale-reason");
+  return input ? String(input.value || "").trim() : "";
+}
+
 function paintMailKale(item) {
   wireMailKaleBox();
   const box = document.getElementById("mail-kale");
   const msg = document.getElementById("mail-kale-msg");
+  const wrap = document.getElementById("mail-kale-reason-wrap");
+  const label = document.getElementById("mail-kale-reason-label");
+  const input = document.getElementById("mail-kale-reason");
+  const agree = document.getElementById("mail-kale-agree");
+  const disagree = document.getElementById("mail-kale-disagree");
+  const appeal = document.getElementById("mail-kale-appeal");
   const { req } = kaleRequestOf(item);
   const status = (req && req.status) || item.status || "";
-  const show = mailIsClinic() && item && item.type === "kale-request" && req && status === "pending";
+  const clinicPending = mailIsClinic() && item && item.type === "kale-request" && req && status === "pending";
+  const patientAppeal = !mailIsClinic() && item && (item.type === "kale-decision" || item.type === "kale-request") && req && status === "declined";
+  const show = clinicPending || patientAppeal;
   if (box) box.hidden = !show;
-  if (msg) msg.textContent = show ? "Agree to apply this home-exercise change, or disagree to keep the current week." : "";
+  if (wrap) wrap.hidden = !show;
+  if (agree) agree.hidden = !clinicPending;
+  if (disagree) disagree.hidden = !clinicPending;
+  if (appeal) appeal.hidden = !patientAppeal;
+  if (label) label.textContent = clinicPending ? "Reason if you disagree" : "Why should they look again?";
+  if (input && window.ELAK_MAIL_KALE_ID !== (item && item.id)) {
+    input.value = "";
+    window.ELAK_MAIL_KALE_ID = item && item.id;
+  }
+  if (msg) {
+    msg.textContent = clinicPending
+      ? "Agree to apply this change, or write a reason and disagree. The patient sees that reason."
+      : (patientAppeal ? "If you still want this change, write why and reappeal. Your clinician sees it on the same request." : "");
+  }
 }
 
 function wireMailKaleBox() {
-  if (window.ELAK_KALE_WIRED) return;
   const agree = document.getElementById("mail-kale-agree");
   const disagree = document.getElementById("mail-kale-disagree");
+  const appeal = document.getElementById("mail-kale-appeal");
   if (!agree || !disagree) return;
-  agree.addEventListener("click", () => decideKaleRequest(true));
-  disagree.addEventListener("click", () => decideKaleRequest(false));
-  window.ELAK_KALE_WIRED = true;
+  if (!agree.dataset.kaleWired) {
+    agree.dataset.kaleWired = "1";
+    agree.addEventListener("click", () => decideKaleRequest(true));
+  }
+  if (!disagree.dataset.kaleWired) {
+    disagree.dataset.kaleWired = "1";
+    disagree.addEventListener("click", () => decideKaleRequest(false));
+  }
+  if (appeal && !appeal.dataset.kaleWired) {
+    appeal.dataset.kaleWired = "1";
+    appeal.addEventListener("click", () => appealKaleRequest());
+  }
 }
 
 function kaleInboxBody(plan, req) {
-  return (plan.patient || "Patient") + " asked Kale to change home practice.\n\n" +
+  let out = (plan.patient || "Patient") + " asked Kale to change home practice.\n\n" +
     (req.summary || "Home exercise change") + "\n\nThey wrote: " + (req.patientNote || req.reason || "");
+  (req.appeals || []).forEach((row, index) => {
+    out += "\n\nReappeal " + (index + 1) + ": " + (row.note || "");
+  });
+  if (req.clinicNote) out += "\n\nClinician reason: " + req.clinicNote;
+  return out;
+}
+
+function upsertInbox(side, username, match, note) {
+  const box = loadInbox();
+  const list = side === "clinic" ? (box.clinic || []) : (((box.patients || {})[username || "patient"]) || []);
+  const found = (list || []).find(match);
+  if (found) {
+    if (note.subject != null) found.subject = note.subject;
+    if (note.body != null) found.body = note.body;
+    if (note.status != null) found.status = note.status;
+    if (note.request != null) found.request = note.request;
+    if (note.requestId) found.requestId = note.requestId;
+    if (note.type) found.type = note.type;
+    found.at = new Date().toISOString();
+    found.read = false;
+    saveInbox(box);
+    if (typeof paintNotesDot === "function") paintNotesDot();
+    return found;
+  }
+  return pushInbox(side, username, note);
 }
 
 function ensureKaleInbox(plan, req) {
   if (!plan || !req) return null;
-  return pushInbox("clinic", plan.username, {
+  return upsertInbox("clinic", plan.username, (row) => row.type === "kale-request" && row.requestId === req.id, {
     type: "kale-request",
     patient: plan.patient,
     subject: "Home exercise change request",
     body: kaleInboxBody(plan, req),
     requestId: req.id,
     request: req,
-    status: "pending"
+    status: req.status || "pending"
   });
+}
+
+function stripClinicKaleDecisions() {
+  const box = loadInbox();
+  const before = (box.clinic || []).length;
+  box.clinic = (box.clinic || []).filter((item) => item && item.type !== "kale-decision");
+  if (box.clinic.length !== before) {
+    saveInbox(box);
+    if (typeof paintNotesDot === "function") paintNotesDot();
+  }
 }
 
 function syncPendingKaleInbox() {
   if (typeof loadPlans !== "function") return;
+  stripClinicKaleDecisions();
   Object.values(loadPlans().plans || {}).forEach((plan) => {
     (plan.kaleRequests || []).forEach((req) => {
       if (!req || req.status !== "pending") return;
@@ -1592,52 +1698,92 @@ function decideKaleRequest(agree) {
     if (msg) msg.textContent = "This request cannot be decided.";
     return false;
   }
+  if (!agree) {
+    const reason = kaleReasonValue();
+    if (!reason) {
+      if (msg) msg.textContent = "Write why you disagree. That reason is sent to the patient.";
+      return false;
+    }
+    req.clinicNote = reason;
+  }
   req.clinicAt = new Date().toISOString();
   if (agree) {
     const live = saveKaleRequest(plan, req);
     const applied = kaleApplyApproved(live, req);
     req.status = "approved";
     saveKaleRequest(live, req);
-    pushInbox("patient", plan.username, {
+    upsertInbox("patient", plan.username, (row) => row.type === "kale-decision" && row.requestId === req.id, {
       type: "kale-decision",
       patient: plan.patient,
       subject: "Home exercise change agreed",
-      body: "Your clinician agreed. The week was updated.\n\n" + (req.summary || applied),
+      body: "Your clinician agreed. The home plan was updated.\n\n" + (req.summary || applied),
       requestId: req.id,
+      request: req,
       status: req.status
     });
-    pushInbox("clinic", plan.username, {
-      type: "kale-decision",
-      patient: plan.patient,
-      subject: "Agreed — week updated",
-      body: "You agreed for " + (plan.patient || "the patient") + ". " + (req.summary || applied),
-      requestId: req.id,
-      status: req.status
-    });
-    if (typeof sendDesktopNotice === "function") sendDesktopNotice("Home exercise change agreed", plan.patient || "");
-    finishKaleMail(item, req, (item.body || "") + "\n\nAgreed. The week was updated.", "Agreed. The patient was notified.");
+    finishKaleMail(item, req, kaleInboxBody(plan, req) + "\n\nAgreed. The home plan was updated.", "Agreed. Saved on this request.");
     return true;
   }
   req.status = "declined";
   saveKaleRequest(plan, req);
-  pushInbox("patient", plan.username, {
+  upsertInbox("patient", plan.username, (row) => row.type === "kale-decision" && row.requestId === req.id, {
     type: "kale-decision",
     patient: plan.patient,
-    subject: "Home exercise change disagreed",
-    body: "Your clinician disagreed. Kale kept the current home-exercise week.\n\n" + (req.summary || ""),
+    subject: "Home exercise change not approved",
+    body: "Your clinician did not approve this change. The home plan was not edited.\n\n" +
+      (req.summary || "") + "\n\nClinician reason: " + (req.clinicNote || "") +
+      "\n\nYou can open this note and reappeal with a written reason.",
     requestId: req.id,
+    request: req,
     status: req.status
   });
-  pushInbox("clinic", plan.username, {
+  finishKaleMail(item, req, kaleInboxBody(plan, req), "Disagreed. The patient was sent your reason.");
+  return true;
+}
+
+function appealKaleRequest() {
+  const item = window.ELAK_MAIL;
+  const msg = document.getElementById("mail-kale-msg");
+  const reason = kaleReasonValue();
+  const found = kaleRequestOf(item);
+  const plan = found.plan;
+  const req = found.req;
+  if (!plan || !req || req.status !== "declined") {
+    if (msg) msg.textContent = "This decision cannot be appealed.";
+    return false;
+  }
+  if (!reason) {
+    if (msg) msg.textContent = "Write why you want another look.";
+    return false;
+  }
+  req.status = "pending";
+  req.appeals = req.appeals || [];
+  req.appeals.push({ note: reason, at: new Date().toISOString() });
+  req.appealAt = new Date().toISOString();
+  saveKaleRequest(plan, req);
+  upsertInbox("clinic", plan.username, (row) => row.type === "kale-request" && row.requestId === req.id, {
+    type: "kale-request",
+    patient: plan.patient,
+    subject: "Home exercise change request",
+    body: kaleInboxBody(plan, req),
+    requestId: req.id,
+    request: req,
+    status: "pending"
+  });
+  upsertInbox("patient", plan.username, (row) => row.type === "kale-decision" && row.requestId === req.id, {
     type: "kale-decision",
     patient: plan.patient,
-    subject: "Disagreed — week unchanged",
-    body: "You disagreed for " + (plan.patient || "the patient") + ". The week was not edited.",
+    subject: "Home exercise change — waiting",
+    body: "You asked your clinician to look again.\n\n" + reason + "\n\nWaiting for their decision.",
     requestId: req.id,
-    status: req.status
+    request: req,
+    status: "pending"
   });
-  if (typeof sendDesktopNotice === "function") sendDesktopNotice("Home exercise change disagreed", plan.patient || "");
-  finishKaleMail(item, req, (item.body || "") + "\n\nDisagreed. The week was not changed.", "Disagreed. The patient was notified.");
+  if (item) {
+    item.status = "pending";
+    item.request = req;
+  }
+  finishKaleMail(item, req, item && item.body ? item.body : "You asked your clinician to look again.\n\n" + reason, "Sent on the same request.");
   return true;
 }
 function toLocalDateTime(iso) {

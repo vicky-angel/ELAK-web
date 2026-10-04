@@ -936,7 +936,6 @@ function renderClinicOwnCalendar() {
     }).catch(() => {});
   }
   paintRoleCalendar($c("clinic-home-cal-table"), $c("clinic-home-cal-status"), "clinician", clinicCal);
-  if (typeof syncLaptopCalendar === "function") syncLaptopCalendar({ _all: true });
   const status = $c("clinic-home-cal-status");
   if (status && !status.textContent) {
     status.textContent = "Showing booked visits and practice times.";

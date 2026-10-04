@@ -635,6 +635,7 @@ function injectBuddyStyle() {
       position: fixed; right: 22px; bottom: 18px; left: auto;
       z-index: 40; display: flex; flex-direction: column; align-items: flex-end;
       font-family: Outfit, "Avenir Next", "Segoe UI", sans-serif;
+      word-spacing: 0.22em; letter-spacing: 0.02em;
     }
     .buddy-launch {
       width: 92px; height: 92px; padding: 0; border: 0; border-radius: 50%;
@@ -657,8 +658,8 @@ function injectBuddyStyle() {
     }
     .buddy-root.open .buddy-panel { display: flex; }
     .buddy-head { display: flex; align-items: center; gap: 12px; padding: 18px 16px 10px; background: #fffdf9; }
-    .buddy-head strong { display: block; font-size: 1.15rem; white-space: nowrap; }
-    .buddy-head span { color: #6e6458; font-size: 0.86rem; white-space: nowrap; }
+    .buddy-head strong { display: block; font-size: 1.15rem; white-space: nowrap; word-spacing: 0.22em; }
+    .buddy-head span { color: #6e6458; font-size: 0.86rem; white-space: nowrap; word-spacing: 0.22em; }
     .buddy-close { margin-left: auto; border: 0; background: #f3efe7; border-radius: 999px; width: 34px; height: 34px; }
     .buddy-chips button {
       border: 0; border-radius: 999px; padding: 7px 12px; background: #fff; color: #5e6c65; font-weight: 650; font-size: 0.82rem;
@@ -673,11 +674,12 @@ function injectBuddyStyle() {
       line-height: 1.4;
     }
     .buddy-pick select { width: 100%; }
-    .buddy-log { flex: 1; overflow: auto; padding: 8px 16px 12px; display: flex; flex-direction: column; gap: 10px; }
-    .buddy-bubble { max-width: 88%; padding: 10px 12px; border-radius: 16px; line-height: 1.4; font-size: 0.95rem; }
+    .buddy-log { flex: 1; overflow: auto; padding: 8px 16px 12px; display: flex; flex-direction: column; gap: 14px; }
+    .buddy-bubble { max-width: 88%; padding: 12px 14px; border-radius: 16px; line-height: 1.6; font-size: 0.95rem; word-spacing: 0.22em; letter-spacing: 0.02em; }
     .buddy-bubble.buddy, .buddy-bubble.clinic { background: #e7f7ee; color: #24352d; border-bottom-left-radius: 6px; align-self: flex-start; }
     .buddy-bubble.patient { background: #2c3a34; color: #f7f1e6; border-bottom-right-radius: 6px; align-self: flex-end; }
-    .buddy-chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 10px; }
+    .buddy-chips { display: flex; flex-wrap: wrap; gap: 10px; padding: 4px 16px 12px; }
+    .buddy-chips button { word-spacing: 0.2em; padding: 8px 14px; }
     .buddy-chips button:disabled { opacity: 0.4; pointer-events: none; }
     .buddy-form { display: flex; gap: 8px; padding: 12px 16px 16px; border-top: 1px solid rgba(111, 88, 64, 0.12); }
     .buddy-form input { flex: 1; border: 1px solid rgba(111, 88, 64, 0.22); border-radius: 999px; padding: 10px 14px; background: #fff; }

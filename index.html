@@ -31,6 +31,12 @@
     color: var(--ink);
     font-family: Outfit, "Avenir Next", "Segoe UI", sans-serif;
     background: #f4efe4;
+    word-spacing: 0.22em;
+    letter-spacing: 0.02em;
+    line-height: 1.5;
+  }
+  p, li, label, button, input, select, textarea, span, strong, small, a, td, th, h1, h2, h3 {
+    word-spacing: 0.22em;
   }
   .shape-grid {
     position: fixed;
@@ -628,8 +634,8 @@
     margin-top: 6px;
   }
   .mail-row.read .notes-dot { visibility: hidden; }
-  .mail-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .mail-copy strong, .mail-copy span { display: block; overflow-wrap: anywhere; }
+  .mail-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  .mail-copy strong, .mail-copy span { display: block; overflow-wrap: anywhere; word-spacing: 0.22em; }
   .mail-copy strong { font-weight: 700; }
   .mail-copy span { color: var(--muted); }
   .mail-row small {
@@ -639,12 +645,18 @@
     color: var(--muted);
     white-space: nowrap;
   }
-  .mail-letter { white-space: pre-wrap; line-height: 1.5; }
-  .overlay .card.mail-card { width: min(560px, 100%); }
-  #mail-kale { margin: 14px 0 8px; }
-  #mail-kale .row { display: flex; flex-wrap: wrap; gap: 8px; }
-  #mail-kale-reason-wrap { margin: 8px 0 0; }
-  #mail-kale-reason { width: 100%; min-height: 72px; }
+  .mail-letter { white-space: pre-wrap; line-height: 1.65; word-spacing: 0.22em; margin: 0 0 16px; }
+  .overlay .card.mail-card { width: min(560px, 100%); display: flex; flex-direction: column; gap: 10px; }
+  .mail-card .kicker { margin: 10px 0 4px; word-spacing: 0.28em; }
+  .mail-card .kicker:first-child { margin-top: 0; }
+  .mail-card p, .mail-card h2 { margin: 0 0 12px; word-spacing: 0.22em; }
+  .mail-card h2 { line-height: 1.25; letter-spacing: 0.01em; }
+  .mail-card label { display: block; margin: 0 0 8px; word-spacing: 0.24em; }
+  #mail-kale { margin: 8px 0 0; display: flex; flex-direction: column; gap: 14px; }
+  #mail-kale .row { display: flex; flex-wrap: wrap; gap: 12px; }
+  #mail-kale-msg { margin: 0; }
+  #mail-kale-reason-wrap { margin: 0; }
+  #mail-kale-reason { width: 100%; min-height: 84px; }
   .cal-wrap { max-height: 320px; overflow: auto; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,250,242,0.55); margin-top: 14px; }
   #screen-title.on {
     display: grid;
@@ -657,7 +669,7 @@
     margin-left: 40px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 12px;
   }
   #screen-title .home-hero {
     justify-self: end;
@@ -744,7 +756,7 @@
     font-size: 0.78rem;
     line-height: 1.4;
   }
-  h1, h2, h3 { font-family: Fraunces, Georgia, serif; font-weight: 680; letter-spacing: -0.03em; margin: 0; }
+  h1, h2, h3 { font-family: Fraunces, Georgia, serif; font-weight: 680; letter-spacing: 0.01em; margin: 0 0 10px; word-spacing: 0.16em; }
   h1 { font-size: clamp(3rem, 7vw, 5.4rem); line-height: 0.92; }
   .lede { font-size: 1.18rem; line-height: 1.5; max-width: 38rem; color: var(--ink); margin: 0 0 12px; }
   .note { color: var(--muted); font-size: 0.92rem; line-height: 1.5; max-width: 40rem; margin: 0 0 12px; }
@@ -1579,7 +1591,7 @@
 <script src="calendar-plugin.js?v=107"></script>
 <script src="agent.js?v=99"></script>
 <script src="kale-config.js?v=1"></script>
-<script src="buddy.js?v=103"></script>
+<script src="buddy.js?v=104"></script>
 <script>
 const SAVE_KEY = "full-range-v1";
 const UP = 0.40;

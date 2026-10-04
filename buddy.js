@@ -235,7 +235,7 @@ function buddyRelay(plan, text, fromRole) {
     }
   }
   return fromRole === "patient"
-    ? "I sent that to your clinician. They will see it in Kale and in Notifications."
+    ? "I sent that to your clinician. They will see it in Notifications."
     : "I sent that to " + (plan.patient || "the patient") + ".";
 }
 
@@ -249,24 +249,114 @@ function kaleFacts(plan) {
   const slot = buddyTodaySlot(plan);
   const pending = ((plan && plan.kaleRequests) || []).filter((row) => row && row.status === "pending");
   const times = (cycle && cycle.slots || []).filter((item) => item.start).slice(0, 8).map((item) => buddyWeekday(item.date) + " " + buddyClock(item.start));
+  const visit = typeof latestVisit === "function" ? latestVisit(plan) : (plan && plan.visits && plan.visits[plan.visits.length - 1]);
+  const growth = typeof avatarGrowthOf === "function" ? avatarGrowthOf(plan) : Number(plan && plan.avatarGrowth) || 0;
+  const appt = plan && plan.appointment;
   return {
     patient: (plan && plan.patient) || "",
+    username: (plan && plan.username) || "",
     exercises: names,
     daysPerWeek: cycle ? cycle.daysPerWeek : 0,
     minBout: cycle ? cycle.minBout : 1,
     today: slot ? {
       date: slot.date,
+      weekday: buddyWeekday(slot.date),
       time: slot.start ? buddyClock(slot.start) : "",
       done: !!(slot.status && String(slot.status).startsWith("done")),
       rest: false
-    } : { date: "", time: "", done: false, rest: true },
+    } : { date: "", weekday: "", time: "", done: false, rest: true },
     booked: times,
-    pendingRequests: pending.map((row) => row.summary || row.kind)
+    nextVisit: appt && appt.start ? (typeof formatAppointmentWhen === "function" ? formatAppointmentWhen(appt) : appt.start) : "",
+    lastVisit: visit && visit.date ? String(visit.date).slice(0, 10) : "",
+    injury: (plan && plan.injury) || "ankle",
+    episode: typeof storyUnlockedCount === "function" ? storyUnlockedCount(plan) : Number(plan && plan.storyUnlocked) || 0,
+    avatarStage: typeof avatarStageOf === "function" ? avatarStageOf(growth) : "",
+    calendarOn: !!(plan && plan.calendarConsent),
+    pendingRequests: pending.map((row) => row.summary || row.kind),
+    ...kalePainLog(plan)
   };
+}
+
+function kalePainLog(plan) {
+  const cycle = plan && (typeof cycleOf === "function" ? cycleOf(plan) : plan.cycle);
+  const slots = ((cycle && cycle.slots) || []).filter((item) => item && (item.pain != null || item.mobility != null || item.painStop));
+  const last = slots[slots.length - 1] || null;
+  return {
+    painRule: (cycle && cycle.painRule) || "Stop if the ankle sharp-pains, swells, or goes numb.",
+    lastPain: last && last.pain != null ? Number(last.pain) : null,
+    lastMobility: last && last.mobility != null ? Number(last.mobility) : null,
+    lastPainStop: !!(last && last.painStop),
+    lastPainDate: last && last.date ? last.date : "",
+    recentPain: slots.slice(-5).map((item) => ({
+      date: item.date,
+      pain: item.pain,
+      mobility: item.mobility,
+      stopped: !!item.painStop
+    }))
+  };
+}
+
+function kaleSpokenScore(text) {
+  const m = String(text || "").toLowerCase().match(/\b(10|[0-9])(?:\s*(?:\/\s*10|out of 10|on the (?:pain )?scale))?\b/);
+  return m ? Number(m[1]) : null;
+}
+
+function kalePainBand(n) {
+  if (n == null || Number.isNaN(n)) return "";
+  if (n <= 0) return "no pain";
+  if (n <= 3) return "mild";
+  if (n <= 6) return "moderate";
+  if (n <= 9) return "severe";
+  return "the top of the scale";
+}
+
+function kaleAskingPainInfo(text) {
+  const t = String(text || "").toLowerCase();
+  const aboutPain = /pain|sore|hurt|aching|ache|vas|scale|swelling|numb|stiff|irritab|\/\s*10|out of 10/.test(t);
+  if (!aboutPain) return false;
+  return !/reschedule|postpone|skip|reduce|fewer|next week|week after|can't (keep|do|train)|cannot (keep|do|train)|don't want to (do|train)|cancel/.test(t);
+}
+
+function kalePainAnswer(ask) {
+  const facts = kaleFacts(ask && ask.plan);
+  const spoken = kaleSpokenScore(ask && ask.text);
+  const n = spoken != null ? spoken : facts.lastPain;
+  const band = kalePainBand(n);
+  let say = "ELAK scores ankle symptoms on a 0–10 numeric pain rating scale (NPRS), the same idea as a visual analogue scale (VAS). 0 is no pain, 1–3 mild, 4–6 moderate, 7–9 severe, and 10 is the worst imaginable. ";
+  if (n != null) say += "A score of " + n + " / 10 is " + band + ". ";
+  if (facts.lastPain != null) {
+    say += "Your last logged session was " + facts.lastPain + " / 10";
+    if (facts.lastMobility != null) say += ", mobility " + facts.lastMobility + " / 10";
+    if (facts.lastPainDate) say += " on " + facts.lastPainDate;
+    say += facts.lastPainStop ? ", and you stopped for pain. " : ". ";
+  }
+  say += "In ankle rehab, working discomfort that stays about 0–3 / 10 and settles within 24 hours is usually tissue load you can keep. Sharp, catching, or rising pain, new swelling, or numbness is a stop sign";
+  say += facts.painRule ? " — " + facts.painRule : ".";
+  say += " That is technical education from your notes, not a diagnosis. If the score is climbing or you need the week moved, say so and I will ask your clinician.";
+  return { say, request: null };
+}
+
+const kaleDeadUrls = new Set();
+
+function kaleApiUrls() {
+  const urls = [];
+  const custom = (typeof window !== "undefined" && window.ELAK_KALE_URL) ? String(window.ELAK_KALE_URL).replace(/\/$/, "") : "";
+  if (custom) urls.push(custom + "/kale");
+  let origin = "";
+  try { origin = typeof location !== "undefined" ? location.origin : ""; } catch (err) { origin = ""; }
+  const onLaptop = !origin || origin === "null" || /^(https?:\/\/)?(127\.0\.0\.1|localhost)(:\d+)?$/i.test(origin);
+  if (onLaptop) {
+    urls.push("http://127.0.0.1:8767/kale");
+    urls.push("http://localhost:8767/kale");
+  } else if (!custom) {
+    try { urls.push(new URL("/kale", origin).href); } catch (err) { /* skip */ }
+  }
+  return urls.filter((url, i) => url && urls.indexOf(url) === i && !kaleDeadUrls.has(url));
 }
 
 function kaleNeedsApproval(text) {
   const t = String(text || "").toLowerCase();
+  if (kaleAskingPainInfo(t)) return false;
   const hardship = /tired|period|menstrual|cramp|sick|ill|unwell|fatigue|pain|sore|hurt|nause|dizzy|bleed|cannot|can't|cant|too much|overwhelmed/.test(t);
   const change = /reschedule|postpone|push|delay|week after|next week|skip|reduce|fewer|less|only \d|rest week|move (the )?(week|plan|exercises)/.test(t);
   return change || (hardship && /exercise|practice|plan|week|session|today|tomorrow/.test(t));
@@ -362,8 +452,9 @@ function kaleLocalThink(ask) {
     return { say: buddyDescribe(plan) + (facts.pendingRequests.length ? " There is a change request waiting for you in Notifications." : " You can also write a note and I will send it to them."), request: null };
   }
   if (buddyGreetingOnly(t)) {
-    return { say: "Hi, I am Kale. I can remind you about today's practice, or send a change request to your clinician if you need the week moved or reduced.", request: null };
+    return { say: "Hi, I am Kale. I can remind you about today's practice, explain a pain score, or send a change request to your clinician if you need the week moved or reduced.", request: null };
   }
+  if (kaleAskingPainInfo(raw)) return kalePainAnswer(ask);
   if (kaleNeedsApproval(raw)) {
     const draft = kaleDraftRequest(plan, raw);
     const names = facts.exercises.length ? facts.exercises.join(", ") : "your ankle set";
@@ -402,30 +493,40 @@ function kaleLocalThink(ask) {
 
 async function kaleThink(ask, signal) {
   const local = kaleLocalThink(ask);
-  try {
-    const res = await fetch("http://127.0.0.1:8767/kale", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal,
-      body: JSON.stringify({
-        side: ask.side,
-        message: ask.text,
-        context: kaleFacts(ask.plan),
-        history: (buddyUi.lines || []).slice(-6).map((row) => ({ role: row.role, text: row.text }))
-      })
-    });
-    if (!res.ok) return local;
-    const data = await res.json();
-    const result = data && data.result;
-    if (!result || !result.say) return local;
-    let request = result.needsApproval === false ? null : (result.request || null);
-    if (!request && kaleNeedsApproval(ask.text) && ask.side === "patient") request = local.request;
-    if (request && !request.summary) request = Object.assign(kaleDraftRequest(ask.plan, ask.text), request);
-    return { say: String(result.say).trim(), request };
-  } catch (err) {
-    if (signal && signal.aborted) throw err;
-    return local;
+  const body = JSON.stringify({
+    side: ask.side,
+    message: ask.text,
+    context: kaleFacts(ask.plan),
+    history: (buddyUi.lines || []).slice(-8).map((row) => ({ role: row.role, text: row.text }))
+  });
+  for (const url of kaleApiUrls()) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal,
+        body
+      });
+      if (!res.ok) {
+        if (res.status === 404 || res.status === 405) kaleDeadUrls.add(url);
+        continue;
+      }
+      const data = await res.json();
+      const result = data && data.result;
+      if (!result || !result.say) {
+        kaleDeadUrls.add(url);
+        continue;
+      }
+      let request = result.needsApproval === false ? null : (result.request || null);
+      if (!request && kaleNeedsApproval(ask.text) && ask.side === "patient") request = local.request;
+      if (request && !request.summary) request = Object.assign(kaleDraftRequest(ask.plan, ask.text), request);
+      return { say: String(result.say).trim(), request };
+    } catch (err) {
+      if (signal && signal.aborted) throw err;
+      kaleDeadUrls.add(url);
+    }
   }
+  return local;
 }
 
 function buddyAnswer(plan, text, side) {
@@ -434,16 +535,9 @@ function buddyAnswer(plan, text, side) {
 }
 
 function buddyUnread(side, username) {
-  if (side === "patient") {
-    const { t } = buddyThread(username);
-    const mail = t.mail.filter((item) => item.role === "clinic" && item.readPatient === false).length;
-    return mail + (t.buddyUnread ? 1 : 0);
-  }
-  const data = loadBuddy();
-  return Object.keys(data.threads || {}).reduce((sum, key) => {
-    const t = data.threads[key];
-    return sum + ((t.mail || []).filter((item) => item.role === "patient" && item.readClinic === false).length);
-  }, 0);
+  if (side !== "patient") return 0;
+  const { t } = buddyThread(username);
+  return t.buddyUnread ? 1 : 0;
 }
 
 function wipeBuddySession() {
@@ -494,11 +588,9 @@ function injectBuddyStyle() {
     .buddy-head strong { display: block; font-size: 1.15rem; white-space: nowrap; }
     .buddy-head span { color: #6e6458; font-size: 0.86rem; white-space: nowrap; }
     .buddy-close { margin-left: auto; border: 0; background: #f3efe7; border-radius: 999px; width: 34px; height: 34px; }
-    .buddy-tabs { display: flex; gap: 8px; padding: 0 16px 10px; }
-    .buddy-tabs button, .buddy-chips button {
+    .buddy-chips button {
       border: 0; border-radius: 999px; padding: 7px 12px; background: #fff; color: #5e6c65; font-weight: 650; font-size: 0.82rem;
     }
-    .buddy-tabs button.on { background: #24352d; color: #fff; }
     .buddy-pick { padding: 0 16px 12px; }
     .buddy-pick label {
       display: block;
@@ -538,7 +630,7 @@ function setBuddyBusy(on) {
   const send = document.getElementById("buddy-send");
   const pause = document.getElementById("buddy-pause");
   const form = document.getElementById("buddy-form");
-  const lock = buddyUi.busy && buddyUi.tab !== "mail";
+  const lock = buddyUi.busy;
   if (input) {
     input.disabled = lock;
     input.placeholder = lock ? "Kale is writing…" : "Write to Kale";
@@ -668,16 +760,15 @@ function renderBuddyLog() {
   if (!log) return;
   const who = currentBuddyWho();
   const plan = buddyPlanOf(who);
-  const { data, t } = buddyThread(who || "guest");
   const side = buddySide();
   log.replaceChildren();
-  const rows = buddyUi.tab === "mail" ? t.mail : buddyUi.lines;
-  if (!rows.length && !(buddyUi.busy && buddyUi.tab !== "mail")) {
+  const rows = buddyUi.lines;
+  if (!rows.length && !buddyUi.busy) {
     const empty = document.createElement("div");
     empty.className = "buddy-bubble buddy";
-    empty.textContent = buddyUi.tab === "mail"
-      ? (side === "clinic" ? "Notes between you and this patient show up here." : "Write a note and I will send it to your clinician.")
-      : (side === "clinic" ? "Ask me about this patient's plan, or tell me what to send them." : "Hi, I am Kale. Ask me about today, change your week, or send a note to your clinician.");
+    empty.textContent = side === "clinic"
+      ? "Ask me about this patient's plan, or tell me what to send them."
+      : "Hi, I am Kale. Ask me about today, or ask to change your week.";
     log.appendChild(empty);
   }
   rows.forEach((item) => {
@@ -687,14 +778,7 @@ function renderBuddyLog() {
     bubble.textContent = item.text;
     log.appendChild(bubble);
   });
-  if (buddyUi.tab === "mail") {
-    t.mail.forEach((item) => {
-      if (side === "clinic") item.readClinic = true;
-      else item.readPatient = true;
-    });
-  }
-  saveBuddy(data);
-  if (buddyUi.busy && buddyUi.tab !== "mail") showBuddyTyping(true);
+  if (buddyUi.busy) showBuddyTyping(true);
   log.scrollTop = log.scrollHeight;
   paintBuddyDot();
   setBuddyBusy(buddyUi.busy);
@@ -714,29 +798,11 @@ function sendBuddy() {
   const input = document.getElementById("buddy-input");
   const text = input && input.value.trim();
   if (!text) return;
-  if (buddyUi.tab !== "mail" && buddyUi.busy) return;
+  if (buddyUi.busy) return;
   input.value = "";
   const who = currentBuddyWho();
   const plan = buddyPlanOf(who);
-  const { data, t } = buddyThread(who || "guest");
   const side = buddySide();
-  if (buddyUi.tab === "mail") {
-    const role = side === "clinic" ? "clinic" : "patient";
-    buddyPush(t.mail, role, text);
-    if (role === "patient") t.mail[t.mail.length - 1].readClinic = false;
-    else t.mail[t.mail.length - 1].readPatient = false;
-    saveBuddy(data);
-    if (plan && typeof pushInbox === "function") {
-      pushInbox(role === "patient" ? "clinic" : "patient", plan.username, {
-        type: "chat",
-        patient: plan.patient,
-        subject: role === "patient" ? "Message from " + (plan.patient || "patient") : "Message from your clinician",
-        body: text
-      });
-    }
-    renderBuddyLog();
-    return;
-  }
   buddyUi.lines.push({
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
     role: side === "clinic" ? "clinic" : "patient",
@@ -767,10 +833,6 @@ function mountBuddy() {
         <div><strong>${BUDDY_NAME}</strong><span>ELAK assistant</span></div>
         <button class="buddy-close" id="buddy-close" type="button" aria-label="Close">×</button>
       </div>
-      <div class="buddy-tabs">
-        <button type="button" class="on" data-tab="leaf">Ask Kale</button>
-        <button type="button" data-tab="mail">Messages</button>
-      </div>
       <div class="buddy-pick" id="buddy-pick" hidden>
         <label for="buddy-who">This is a choice of a patient</label>
         <select id="buddy-who"></select>
@@ -796,18 +858,10 @@ function mountBuddy() {
   });
   document.getElementById("buddy-form").addEventListener("submit", (event) => {
     event.preventDefault();
-    if (buddyUi.busy && buddyUi.tab !== "mail") return;
+    if (buddyUi.busy) return;
     sendBuddy();
   });
   document.getElementById("buddy-pause").addEventListener("click", pauseBuddyInput);
-  root.querySelectorAll(".buddy-tabs button").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      buddyUi.tab = btn.getAttribute("data-tab");
-      root.querySelectorAll(".buddy-tabs button").forEach((other) => other.classList.toggle("on", other === btn));
-      paintBuddyChips();
-      renderBuddyLog();
-    });
-  });
   const select = document.getElementById("buddy-who");
   select.addEventListener("change", () => {
     buddyUi.who = select.value;
@@ -821,15 +875,15 @@ function paintBuddyChips() {
   if (!row) return;
   row.replaceChildren();
   const side = buddySide();
-  const chips = buddyUi.tab === "mail"
-    ? (side === "clinic" ? ["Please film today's set", "How is the ankle today?"] : ["My ankle is sore", "I finished today"])
-    : (side === "clinic" ? ["What is today?", "Only 4 days a week", "Send a reminder"] : ["What is today?", "Only 3 days a week", "Friday at 4pm"]);
+  const chips = side === "clinic"
+    ? ["What is today?", "Only 4 days a week", "Send a reminder"]
+    : ["What is today?", "What does a 6 on the pain scale mean?", "Friday at 4pm"];
   chips.forEach((label) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.textContent = label;
     btn.addEventListener("click", () => {
-      if (buddyUi.busy && buddyUi.tab !== "mail") return;
+      if (buddyUi.busy) return;
       const input = document.getElementById("buddy-input");
       if (label === "Send a reminder") input.value = "Send them a reminder about today's practice";
       else input.value = label;

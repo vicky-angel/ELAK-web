@@ -387,6 +387,10 @@ function applyYouthCalendar(plan, startISO, endISO) {
 }
 function calendarSummary(plan, who) {
   const list = (plan.calendar || []).filter((event) => {
+    if (who === "clinician") {
+      const kind = typeof calendarEventKind === "function" ? calendarEventKind(event) : "";
+      return event.who === "clinician" || event.who === "both" || event.source === "elak" || event.source === "clinic" || kind === "practice" || kind === "visit";
+    }
     if (who) return event.who === who || event.who === "both" || event.source === "elak" || (who === "patient" && (event.source === "calendar" || event.source === "busy") && event.who !== "clinician");
     return event.source === "calendar" || event.source === "busy" || event.source === "clinic" || event.source === "elak";
   });
@@ -748,16 +752,22 @@ function backfillOpenVisits() {
 function clinicVisitEvents() {
   const out = [];
   Object.values((loadPlans().plans) || {}).forEach((plan) => {
-    if (!plan || plan.archived || !plan.appointment || !plan.appointment.start) return;
-    out.push({
-      source: "elak",
-      who: "both",
-      title: "Next visit · " + (plan.patient || "Patient"),
-      start: plan.appointment.start,
-      end: plan.appointment.end
-    });
+    if (!plan || plan.archived) return;
+    if (typeof elakPlanEvents === "function") {
+      elakPlanEvents(plan).forEach((event) => out.push(event));
+      return;
+    }
+    if (plan.appointment && plan.appointment.start) {
+      out.push({
+        source: "elak",
+        who: "both",
+        title: "Next visit · " + (plan.patient || "Patient"),
+        start: plan.appointment.start,
+        end: plan.appointment.end
+      });
+    }
   });
-  return out;
+  return typeof dedupeCalendarEvents === "function" ? dedupeCalendarEvents(out, null, "clinician") : out;
 }
 function dueSlot(cycle, now) {
   if (!cycle) return null;

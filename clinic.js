@@ -919,7 +919,12 @@ function renderClinicOwnCalendar() {
     box.classList.toggle("open", open);
     btn.setAttribute("aria-expanded", String(open));
   }
-  paintRoleCalendar($c("clinic-home-cal-table"), $c("clinic-home-cal-status"), "clinician");
+  const clinicCal = {
+    calendar: typeof clinicVisitEvents === "function" ? clinicVisitEvents() : [],
+    clinicianCalendar: typeof loadRoleCalendar === "function" ? loadRoleCalendar("clinician") : null,
+    patientCalendar: typeof loadRoleCalendar === "function" ? loadRoleCalendar("patient") : null
+  };
+  paintRoleCalendar($c("clinic-home-cal-table"), $c("clinic-home-cal-status"), "clinician", clinicCal);
   const status = $c("clinic-home-cal-status");
   if (status && !status.textContent) {
     status.textContent = "Showing booked visits and practice times.";

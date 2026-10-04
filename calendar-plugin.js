@@ -2,7 +2,9 @@ const DEVICE_CAL_BRIDGES = [
   "/api/device-calendar",
   "http://127.0.0.1:8766/calendar",
   "http://localhost:8766/calendar",
-  "data/device-calendar-live.json"
+  "data/elak-calendar.json",
+  "data/device-calendar-live.json",
+  "https://raw.githubusercontent.com/vicky-angel/ELAK-web/main/data/elak-calendar.json"
 ];
 const DEVICE_CAL_HANDLE_DB = "elak-device-cal-v1";
 
@@ -483,18 +485,140 @@ async function fetchCalendarJson(url, ms) {
 }
 function calendarBridgeUrls() {
   const https = typeof location !== "undefined" && location.protocol === "https:";
-  if (https) return DEVICE_CAL_BRIDGES.filter((url) => !/^https?:\/\/(127\.0\.0\.1|localhost)/i.test(url));
-  return DEVICE_CAL_BRIDGES;
+  const urls = DEVICE_CAL_BRIDGES.slice();
+  try {
+    if (typeof location !== "undefined" && location.protocol !== "file:") {
+      urls.unshift(new URL("data/elak-calendar.json", location.href).href);
+    }
+  } catch (err) { /* keep listed urls */ }
+  if (https) urls = urls.filter((url) => !/^https?:\/\/(127\.0\.0\.1|localhost)/i.test(url));
+  const consented = typeof calendarConsentOn !== "function" || calendarConsentOn();
+  if (!consented) urls = urls.filter((url) => /elak-calendar\.json/i.test(url));
+  return urls.filter((url, i) => url && urls.indexOf(url) === i);
+}
+function isSharedCalendarPack(pack, url) {
+  const source = String((pack && pack.source) || "");
+  return source === "elak-shared" || source === "elak" || /elak-calendar\.json|raw\.githubusercontent/i.test(String(url || ""));
+}
+function filterSharedEvents(events, plan, role) {
+  const list = Array.isArray(events) ? events : [];
+  if (role === "clinician") return list;
+  const needles = [plan && plan.patient, plan && plan.username]
+    .filter(Boolean)
+    .map((s) => String(s).toLowerCase().trim())
+    .filter((s) => s.length >= 2);
+  if (!needles.length) return list.filter((event) => /elak|next visit/i.test(event.title || ""));
+  return list.filter((event) => {
+    const title = String(event.title || "").toLowerCase();
+    return needles.some((n) => title.includes(n));
+  });
+}
+function elakPlanEvents(plan) {
+  const out = [];
+  const who = (plan && plan.patient) || "";
+  const cycle = plan && plan.cycle;
+  const minutes = Math.max(5, Number(cycle && cycle.minutes) || 10);
+  if (cycle && Array.isArray(cycle.slots)) {
+    cycle.slots.forEach((slot) => {
+      if (!slot || !slot.start) return;
+      const start = new Date(slot.start);
+      if (Number.isNaN(start.getTime())) return;
+      out.push({
+        source: "elak",
+        who: "patient",
+        title: "ELAK ankle practice" + (who ? " · " + who : ""),
+        start: start.toISOString(),
+        end: new Date(start.getTime() + minutes * 60000).toISOString()
+      });
+    });
+  }
+  if (plan && plan.appointment && plan.appointment.start) {
+    const start = new Date(plan.appointment.start);
+    if (!Number.isNaN(start.getTime())) {
+      out.push({
+        source: "elak",
+        who: "both",
+        title: "Next visit" + (who ? " · " + who : ""),
+        start: start.toISOString(),
+        end: plan.appointment.end || new Date(start.getTime() + 30 * 60000).toISOString()
+      });
+    }
+  }
+  (plan && plan.calendar || []).forEach((event) => {
+    if (!event || event.source !== "elak" || !event.start) return;
+    out.push({
+      source: "elak",
+      who: event.who || "patient",
+      title: event.title || "ELAK",
+      start: event.start,
+      end: event.end || event.start
+    });
+  });
+  const seen = {};
+  return out.filter((event) => {
+    const key = (event.title || "") + "|" + (event.start || "");
+    if (seen[key]) return false;
+    seen[key] = true;
+    return true;
+  });
+}
+function nearestEventDay(events, preferred) {
+  const keys = [];
+  (events || []).forEach((event) => {
+    const key = typeof dayKey === "function" ? dayKey(event.start) : String(event.start || "").slice(0, 10);
+    if (key && keys.indexOf(key) < 0) keys.push(key);
+  });
+  keys.sort();
+  if (!keys.length) return preferred;
+  if (keys.indexOf(preferred) >= 0) return preferred;
+  const upcoming = keys.find((key) => key >= preferred);
+  return upcoming || keys[keys.length - 1];
+}
+function icsStamp(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+}
+function downloadElakIcs(plan, events) {
+  const rows = (events || []).filter((event) => event && event.start);
+  if (!rows.length) return false;
+  const stamp = icsStamp(new Date().toISOString());
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//ELAK//Practice//EN"];
+  rows.forEach((event, i) => {
+    const start = icsStamp(event.start);
+    const end = icsStamp(event.end || event.start);
+    if (!start) return;
+    lines.push("BEGIN:VEVENT");
+    lines.push("UID:elak-" + ((plan && plan.code) || "plan") + "-" + i + "@elak");
+    lines.push("DTSTAMP:" + stamp);
+    lines.push("DTSTART:" + start);
+    if (end) lines.push("DTEND:" + end);
+    lines.push("SUMMARY:" + String(event.title || "ELAK").replace(/[,;\\]/g, " "));
+    lines.push("END:VEVENT");
+  });
+  lines.push("END:VCALENDAR");
+  const blob = new Blob([lines.join("\r\n")], { type: "text/calendar" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "elak-practice.ics";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return true;
 }
 async function readDeviceCalendarBridge() {
   if (window.ELAK_CAL_NO_BRIDGE) return loadRoleCalendar(pageCalendarRole());
   for (const url of calendarBridgeUrls()) {
     const data = await fetchCalendarJson(url, 1200);
-    if (data && Array.isArray(data.events) && data.events.length) {
-      return { source: "device", events: data.events };
-    }
-    if (data && data.ok && Array.isArray(data.events) && data.events.length) {
-      return { source: "device", events: data.events };
+    const events = data && (Array.isArray(data.events) ? data.events : null);
+    if (events && events.length) {
+      return {
+        source: isSharedCalendarPack(data, url) ? "elak-shared" : (data.source || "device"),
+        syncedAt: data.syncedAt || new Date().toISOString(),
+        events
+      };
     }
   }
   window.ELAK_CAL_NO_BRIDGE = true;
@@ -532,7 +656,13 @@ function planForCalendarSync() {
 }
 function writeDeviceCalendarToPlan(plan, pack, role) {
   const who = role || pageCalendarRole();
-  const stamped = saveRoleCalendar(who, pack || { events: [] });
+  const raw = pack || { events: [] };
+  const events = isSharedCalendarPack(raw) ? filterSharedEvents(raw.events, plan, who) : (raw.events || []);
+  const stamped = saveRoleCalendar(who, {
+    source: raw.source || "device",
+    syncedAt: raw.syncedAt || new Date().toISOString(),
+    events
+  });
   if (!plan) {
     return who === "clinician" ? { clinicianCalendar: stamped } : { patientCalendar: stamped, deviceCalendar: stamped };
   }
@@ -571,15 +701,21 @@ function paintRoleCalendar(root, status, role, plan) {
     patientCalendar: loadRoleCalendar("patient")
   };
   applyRoleCalendarsToPlan(fake);
+  fake.calendar = (fake.calendar || []).concat(elakPlanEvents(plan || fake));
   if (who === "clinician" && typeof clinicVisitEvents === "function") {
     fake.calendar = (fake.calendar || []).concat(clinicVisitEvents());
   }
-  if (status) status.textContent = calendarPackStatus(who === "clinician" ? clinicianCalendarOf(fake) : patientCalendarOf(fake));
+  const pack = who === "clinician" ? clinicianCalendarOf(fake) : patientCalendarOf(fake);
+  if (status) {
+    const line = calendarPackStatus(pack);
+    status.textContent = line || (elakPlanEvents(plan || fake).length ? "Showing booked practice times." : "No calendar events yet.");
+  }
   if (!window.ELAK_CAL_DAY) {
     window.ELAK_CAL_DAY = typeof dayKey === "function" ? dayKey(new Date()) : new Date().toISOString().slice(0, 10);
   }
   if (root && typeof calendarSummary === "function") {
     const events = calendarSummary(fake, who);
+    window.ELAK_CAL_DAY = nearestEventDay(events, window.ELAK_CAL_DAY);
     const stamp = (window.ELAK_CAL_DAY || "") + "|" + calendarEventStamp(events);
     if (root.dataset.calStamp === stamp) return;
     root.dataset.calStamp = stamp;
@@ -591,7 +727,6 @@ function paintRoleCalendar(root, status, role, plan) {
   }
 }
 async function pullLiveCalendar(fresh) {
-  if (typeof calendarConsentOn === "function" && !calendarConsentOn()) return planForCalendarSync();
   if (window.ELAK_CAL_READING) return null;
   if (!fresh && typeof document !== "undefined" && document.hidden) return null;
   const who = pageCalendarRole();
@@ -1211,7 +1346,6 @@ function submitVisitNegotiate() {
   return true;
 }
 function startCalendarWatch() {
-  if (typeof calendarConsentOn === "function" && !calendarConsentOn()) return;
   if (window.ELAK_CAL_TIMER) return;
   pullLiveCalendar(false).catch(() => {});
   window.ELAK_CAL_TIMER = setInterval(() => {

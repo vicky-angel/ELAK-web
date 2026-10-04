@@ -922,14 +922,14 @@ function renderClinicOwnCalendar() {
   paintRoleCalendar($c("clinic-home-cal-table"), $c("clinic-home-cal-status"), "clinician");
   const status = $c("clinic-home-cal-status");
   if (status && !status.textContent) {
-    status.textContent = (typeof calendarConsentOn === "function" && calendarConsentOn("clinician"))
-      ? "Showing booked visits. Laptop Calendar.app only syncs on this computer when the calendar helper is running."
-      : "Showing booked visits.";
+    status.textContent = "Showing booked visits and practice times.";
   }
 }
 async function loadClinicCalendar() {
-  if (typeof calendarConsentOn === "function" && !calendarConsentOn("clinician")) return;
   startCalendarWatch();
+  if (typeof pullLiveCalendar === "function") {
+    pullLiveCalendar(false).then(() => renderClinicOwnCalendar()).catch(() => renderClinicOwnCalendar());
+  }
 }
 function healthEngine() {
   return import("./health-report/js/engine.js?v=4");

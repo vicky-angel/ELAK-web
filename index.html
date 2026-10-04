@@ -1192,7 +1192,7 @@
         Remember me
       </label>
       <label class="remember consent" for="patient-cal-consent">
-        <input id="patient-cal-consent" type="checkbox">
+        <input id="patient-cal-consent" type="checkbox" checked>
         I consent for ELAK to read and edit my calendar information
       </label>
       <p class="note" id="patient-error"></p>
@@ -1554,7 +1554,7 @@
 <video id="cam" playsinline muted hidden></video>
 
 <script src="shared.js?v=89"></script>
-<script src="calendar-plugin.js?v=96"></script>
+<script src="calendar-plugin.js?v=97"></script>
 <script src="agent.js?v=92"></script>
 <script src="kale-config.js?v=1"></script>
 <script src="buddy.js?v=101"></script>
@@ -1887,7 +1887,7 @@ function refreshMeta() {
   renderHomeStories(fresh);
   paintNotesDot();
   if (S.screen === "notes") renderPatientInbox();
-  if (fresh && calendarConsentOn("patient")) {
+  if (fresh) {
     startCalendarWatch();
     ensureCalendarOnPlan(fresh).then(() => {
       if (S.screen === "title") renderHomeCalendar(activePlan() || fresh);
@@ -2023,6 +2023,7 @@ function renderBookPlan(plan) {
 }
 function homeFoldOpen(id) {
   if (!window.ELAK_HOME_FOLDS) window.ELAK_HOME_FOLDS = {};
+  if (window.ELAK_HOME_FOLDS[id] === undefined && id === "calendar") return true;
   return !!window.ELAK_HOME_FOLDS[id];
 }
 function setHomeFold(id, on) {
@@ -2162,7 +2163,7 @@ function renderHomeSchedule(plan) {
 function renderHomeCalendar(plan) {
   const root = $("home-calendar");
   if (!root) return;
-  if (!plan || !calendarConsentOn("patient")) {
+  if (!plan) {
     root.hidden = true;
     root.replaceChildren();
     return;
@@ -2171,6 +2172,7 @@ function renderHomeCalendar(plan) {
   const pane = mountHomeFold(root, "calendar", "Calendar");
   let status = pane.querySelector("#home-cal-status");
   let table = pane.querySelector("#home-cal-table");
+  let add = pane.querySelector("#home-cal-add");
   if (!status || !table) {
     pane.replaceChildren();
     status = document.createElement("p");
@@ -2178,7 +2180,19 @@ function renderHomeCalendar(plan) {
     status.id = "home-cal-status";
     table = document.createElement("div");
     table.id = "home-cal-table";
-    pane.append(status, table);
+    add = document.createElement("button");
+    add.type = "button";
+    add.className = "secondary";
+    add.id = "home-cal-add";
+    add.style.marginTop = "10px";
+    add.textContent = "Add these times to this device";
+    add.addEventListener("click", () => {
+      const events = typeof calendarSummary === "function"
+        ? calendarSummary({ calendar: (typeof elakPlanEvents === "function" ? elakPlanEvents(plan) : []).concat(plan.calendar || []) }, "patient")
+        : (plan.calendar || []);
+      if (typeof downloadElakIcs === "function") downloadElakIcs(plan, events);
+    });
+    pane.append(status, table, add);
   }
   paintRoleCalendar(table, status, "patient", plan);
 }

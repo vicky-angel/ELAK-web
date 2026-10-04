@@ -156,8 +156,8 @@ function expandDeviceEvents(raw, startISO, endISO) {
       if (to < winStart || from > winEnd) return;
       out.push({
         title: event.title || "Busy",
-        start: from.toISOString(),
-        end: to.toISOString(),
+        start: isoLocal(from),
+        end: isoLocal(to),
         allDay: !!event.allDay
       });
     };
@@ -502,9 +502,42 @@ function isSharedCalendarPack(pack, url) {
   const source = String((pack && pack.source) || "");
   return source === "elak-shared" || source === "elak" || /elak-calendar\.json|raw\.githubusercontent/i.test(String(url || ""));
 }
+function clinicianCalendarPlans() {
+  const data = typeof loadPlans === "function" ? loadPlans() : { plans: {} };
+  const mine = typeof authRecord === "function" && authRecord() ? authRecord().id : "";
+  return Object.values(data.plans || {}).filter((plan) => {
+    if (!plan || plan.archived) return false;
+    if (mine) return !plan.clinicianId || plan.clinicianId === mine;
+    return false;
+  });
+}
+function clinicianPatientNeedles() {
+  const needles = [];
+  clinicianCalendarPlans().forEach((plan) => {
+    [plan.patient, plan.username].forEach((value) => {
+      const n = String(value || "").toLowerCase().trim();
+      if (n.length >= 2 && needles.indexOf(n) < 0) needles.push(n);
+    });
+  });
+  return needles;
+}
+function eventBelongsToClinician(event) {
+  const kind = calendarEventKind(event);
+  if (kind === "other") return true;
+  const needles = clinicianPatientNeedles();
+  if (!needles.length) return false;
+  const title = String((event && event.title) || "").toLowerCase();
+  const person = eventPerson(event);
+  return needles.some((n) => title.includes(n) || person === n || (person && (person.includes(n) || n.includes(person))));
+}
+function isoLocal(value) {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value || "");
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") + ":" + String(d.getSeconds()).padStart(2, "0");
+}
 function filterSharedEvents(events, plan, role) {
   const list = Array.isArray(events) ? events : [];
-  if (role === "clinician") return list;
+  if (role === "clinician") return list.filter((event) => eventBelongsToClinician(event));
   const needles = [plan && plan.patient, plan && plan.username]
     .filter(Boolean)
     .map((s) => String(s).toLowerCase().trim())
@@ -547,8 +580,31 @@ function calendarDayKey(value) {
   if (naive && !/[zZ]|[+\-]\d{2}:?\d{2}$/.test(raw)) return naive[1];
   return typeof dayKey === "function" ? dayKey(value) : raw.slice(0, 10);
 }
+function collapseTzTwins(events) {
+  const rows = events || [];
+  const drop = [];
+  rows.forEach((a) => {
+    if (drop.indexOf(a) >= 0) return;
+    const kind = calendarEventKind(a);
+    if (kind !== "practice" && kind !== "visit") return;
+    rows.forEach((b) => {
+      if (a === b || drop.indexOf(b) >= 0) return;
+      if (calendarEventKind(b) !== kind || eventPerson(a) !== eventPerson(b)) return;
+      if (calendarDayKey(a.start) !== calendarDayKey(b.start)) return;
+      const diff = Math.abs(new Date(a.start) - new Date(b.start));
+      if (diff !== 7 * 3600000 && diff !== 8 * 3600000) return;
+      const aZ = /[zZ]|[+\-]\d{2}:?\d{2}/.test(String(a.start || ""));
+      const bZ = /[zZ]|[+\-]\d{2}:?\d{2}/.test(String(b.start || ""));
+      drop.push(aZ && !bZ ? a : (!aZ && bZ ? b : (String(a.start) < String(b.start) ? a : b)));
+    });
+  });
+  return rows.filter((event) => drop.indexOf(event) < 0);
+}
 function dedupeCalendarEvents(events, plan, role) {
-  const rows = (events || []).filter((event) => role === "clinician" || belongsToPlan(event, plan));
+  const rows = (events || []).filter((event) => {
+    if (role === "clinician") return eventBelongsToClinician(event);
+    return belongsToPlan(event, plan);
+  });
   const seen = {};
   const out = [];
   rows.forEach((event) => {
@@ -572,11 +628,11 @@ function dedupeCalendarEvents(events, plan, role) {
       namedStarts[kind + "|" + calendarStartKey(event)] = true;
     }
   });
-  return out.filter((event) => {
+  return collapseTzTwins(out.filter((event) => {
     const kind = calendarEventKind(event);
     if ((kind === "practice" || kind === "visit") && !eventPerson(event) && namedStarts[kind + "|" + calendarStartKey(event)]) return false;
     return true;
-  });
+  }));
 }
 function elakPlanEvents(plan) {
   const out = [];
@@ -592,8 +648,8 @@ function elakPlanEvents(plan) {
         source: "elak",
         who: "patient",
         title: "ELAK ankle practice" + (who ? " · " + who : ""),
-        start: start.toISOString(),
-        end: new Date(start.getTime() + minutes * 60000).toISOString()
+        start: isoLocal(start),
+        end: isoLocal(new Date(start.getTime() + minutes * 60000))
       });
     });
   }
@@ -604,8 +660,8 @@ function elakPlanEvents(plan) {
         source: "elak",
         who: "both",
         title: "Next visit" + (who ? " · " + who : ""),
-        start: start.toISOString(),
-        end: plan.appointment.end || new Date(start.getTime() + 30 * 60000).toISOString()
+        start: isoLocal(start),
+        end: plan.appointment.end ? isoLocal(plan.appointment.end) : isoLocal(new Date(start.getTime() + 30 * 60000))
       });
     }
   }
@@ -722,7 +778,9 @@ function planForCalendarSync() {
 function writeDeviceCalendarToPlan(plan, pack, role) {
   const who = role || pageCalendarRole();
   const raw = pack || { events: [] };
-  const events = isSharedCalendarPack(raw) ? filterSharedEvents(raw.events, plan, who) : (raw.events || []);
+  const events = who === "clinician" || isSharedCalendarPack(raw)
+    ? filterSharedEvents(raw.events, plan, who)
+    : (raw.events || []);
   const stamped = saveRoleCalendar(who, {
     source: raw.source || "device",
     syncedAt: raw.syncedAt || new Date().toISOString(),
@@ -939,6 +997,7 @@ function clinicLaptopCalendarEvents() {
   function add(event) {
     if (!event || !event.start) return;
     if (calendarEventKind(event) === "other") return;
+    if (!eventBelongsToClinician(event)) return;
     const title = event.title || "ELAK ankle practice";
     const key = title + "|" + calendarStartKey(event);
     if (seen[key]) return;
@@ -950,21 +1009,14 @@ function clinicLaptopCalendarEvents() {
       notes: "elak:clinic"
     });
   }
-  Object.values((typeof loadPlans === "function" ? loadPlans().plans : {}) || {}).forEach((plan) => {
-    if (!plan || plan.archived) return;
-    laptopCalendarEvents(plan).forEach(add);
-  });
+  clinicianCalendarPlans().forEach((plan) => laptopCalendarEvents(plan).forEach(add));
   if (typeof clinicVisitEvents === "function") clinicVisitEvents().forEach(add);
-  const pack = typeof loadRoleCalendar === "function"
-    ? (loadRoleCalendar("clinician") || loadRoleCalendar("patient") || {})
-    : {};
-  (pack.events || []).forEach(add);
-  return out;
+  return typeof dedupeCalendarEvents === "function" ? dedupeCalendarEvents(out, null, "clinician") : out;
 }
 async function pushLaptopCalendar(plan) {
   const clinicAll = !plan || plan === true || (plan && plan._all) || (typeof pageCalendarRole === "function" && pageCalendarRole() === "clinician");
   const events = clinicAll ? clinicLaptopCalendarEvents() : laptopCalendarEvents(plan);
-  if (!events.length) return null;
+  if (!events.length && !clinicAll) return null;
   const payload = {
     tag: clinicAll ? "elak:clinic" : laptopCalendarTag(plan),
     events: events,

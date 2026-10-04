@@ -388,8 +388,9 @@ function applyYouthCalendar(plan, startISO, endISO) {
 function calendarSummary(plan, who) {
   const list = (plan.calendar || []).filter((event) => {
     if (who === "clinician") {
-      const kind = typeof calendarEventKind === "function" ? calendarEventKind(event) : "";
-      return event.who === "clinician" || event.who === "both" || event.source === "elak" || event.source === "clinic" || kind === "practice" || kind === "visit";
+      return typeof eventBelongsToClinician === "function"
+        ? eventBelongsToClinician(event)
+        : (event.who === "clinician" || event.who === "both" || event.source === "elak" || event.source === "clinic");
     }
     if (who) return event.who === who || event.who === "both" || event.source === "elak" || (who === "patient" && (event.source === "calendar" || event.source === "busy") && event.who !== "clinician");
     return event.source === "calendar" || event.source === "busy" || event.source === "clinic" || event.source === "elak";
@@ -751,7 +752,10 @@ function backfillOpenVisits() {
 }
 function clinicVisitEvents() {
   const out = [];
-  Object.values((loadPlans().plans) || {}).forEach((plan) => {
+  const plans = typeof clinicianCalendarPlans === "function"
+    ? clinicianCalendarPlans()
+    : Object.values((loadPlans().plans) || {}).filter((plan) => plan && !plan.archived);
+  plans.forEach((plan) => {
     if (!plan || plan.archived) return;
     if (typeof elakPlanEvents === "function") {
       elakPlanEvents(plan).forEach((event) => out.push(event));

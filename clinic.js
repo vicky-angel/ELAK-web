@@ -922,7 +922,7 @@ function renderClinicOwnCalendar() {
   const clinicCal = {
     calendar: typeof clinicVisitEvents === "function" ? clinicVisitEvents() : [],
     clinicianCalendar: typeof loadRoleCalendar === "function" ? loadRoleCalendar("clinician") : null,
-    patientCalendar: typeof loadRoleCalendar === "function" ? loadRoleCalendar("patient") : null
+    patientCalendar: null
   };
   paintRoleCalendar($c("clinic-home-cal-table"), $c("clinic-home-cal-status"), "clinician", clinicCal);
   const status = $c("clinic-home-cal-status");

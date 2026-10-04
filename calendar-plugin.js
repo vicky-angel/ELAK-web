@@ -528,13 +528,27 @@ function clinicianPatientNeedles() {
   });
   return needles;
 }
+function stripGhostCalendarCaches() {
+  ["clinician", "patient"].forEach((role) => {
+    const pack = typeof loadRoleCalendar === "function" ? loadRoleCalendar(role) : null;
+    if (!pack || !Array.isArray(pack.events)) return;
+    const next = pack.events.filter((event) => !isGhostCalendarPerson(event));
+    if (next.length !== pack.events.length) saveRoleCalendar(role, Object.assign({}, pack, { events: next }));
+  });
+  if (window.ELAK_SHARED_CAL && Array.isArray(window.ELAK_SHARED_CAL.events)) {
+    window.ELAK_SHARED_CAL.events = window.ELAK_SHARED_CAL.events.filter((event) => !isGhostCalendarPerson(event));
+  }
+}
 async function loadSharedElakCalendar() {
+  stripGhostCalendarCaches();
   if (window.ELAK_SHARED_CAL && Array.isArray(window.ELAK_SHARED_CAL.events)) return window.ELAK_SHARED_CAL;
   try {
     const res = await fetch("data/elak-calendar.json?v=visit", { cache: "no-store" });
     const data = await res.json();
     if (data && Array.isArray(data.events)) {
+      data.events = data.events.filter((event) => !isGhostCalendarPerson(event));
       window.ELAK_SHARED_CAL = data;
+      stripGhostCalendarCaches();
       return data;
     }
   } catch (err) { /* keep going */ }
@@ -593,16 +607,20 @@ function clinicNextVisitEvents() {
     }
     ((plan && plan.calendar) || []).forEach((event) => add(event, plan && plan.patient, true));
   });
-  ["clinician", "patient"].forEach((role) => {
-    const pack = typeof loadRoleCalendar === "function" ? loadRoleCalendar(role) : null;
-    ((pack && pack.events) || []).forEach((event) => add(event));
-  });
-  (((window.ELAK_SHARED_CAL || {}).events) || []).forEach((event) => add(event));
   return out;
 }
+const GHOST_CAL_PEOPLE = [
+  "sebastian korda", "longsha", "taylor fritz", "elsa", "nofear", "life",
+  "tab check", "cycle check", "alex test", "injury check", "calendar two"
+];
+function isGhostCalendarPerson(event) {
+  const blob = (eventPerson(event) + " " + String((event && event.title) || "")).toLowerCase();
+  return GHOST_CAL_PEOPLE.some((name) => blob.indexOf(name) >= 0);
+}
 function eventBelongsToClinician(event) {
+  if (isGhostCalendarPerson(event)) return false;
   const kind = calendarEventKind(event);
-  if (kind === "other") return true;
+  if (kind === "other") return !/elak|next visit|ankle practice/i.test(String((event && event.title) || ""));
   const needles = clinicianPatientNeedles();
   const plans = clinicianCalendarPlans();
   if (!needles.length && !plans.length) return false;

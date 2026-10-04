@@ -6,7 +6,7 @@ import { generateHealthReport, readSavedReport } from "./engine.js?v=4";
 const detailEl = document.getElementById("detail");
 let patients = [];
 
-const genderZh = (g) => ({ Male: "男", Female: "女", Other: "其他" }[g] || g || "—");
+const genderLabel = (g) => g || "—";
 
 /* ── 指标定义 ─────────────────────────────── */
 const M = (label, color, unit, dec, get, betterDown = false) => ({
@@ -14,31 +14,31 @@ const M = (label, color, unit, dec, get, betterDown = false) => ({
 });
 
 const METRICS = {
-  accuracy: M("动作准确率", "#34c759", "%", 1, (d) => d.rehab?.exercise_accuracy_pct),
-  pain: M("疼痛 (VAS)", "#ff3b30", "", 1, (d) => d.rehab?.pain_vas, true),
-  rating: M("主观评分", "#ff9500", "/5", 1, (d) => d.rehab?.patient_self_rating),
-  asymmetry: M("步态不对称", "#007aff", "%", 2, (d) => d.gait?.walking_asymmetry_pct, true),
-  speed: M("步行速度", "#34c759", "m/s", 2, (d) => d.gait?.walking_speed_mps),
-  cadence: M("步频", "#ff9500", "步/分", 1, (d) => d.gait?.cadence_steps_per_min),
-  double_support: M("双支撑相", "#af52de", "%", 1, (d) => d.gait?.double_support_pct, true),
-  resting_hr: M("静息心率", "#ff3b30", "bpm", 0, (d) => d.cardiac?.resting_hr_bpm, true),
-  walking_hr: M("步行心率", "#ff2d55", "bpm", 0, (d) => d.cardiac?.walking_hr_bpm, true),
+  accuracy: M("Exercise accuracy", "#34c759", "%", 1, (d) => d.rehab?.exercise_accuracy_pct),
+  pain: M("Pain (VAS)", "#ff3b30", "", 1, (d) => d.rehab?.pain_vas, true),
+  rating: M("Self rating", "#ff9500", "/5", 1, (d) => d.rehab?.patient_self_rating),
+  asymmetry: M("Gait asymmetry", "#007aff", "%", 2, (d) => d.gait?.walking_asymmetry_pct, true),
+  speed: M("Walking speed", "#34c759", "m/s", 2, (d) => d.gait?.walking_speed_mps),
+  cadence: M("Cadence", "#ff9500", "steps/min", 1, (d) => d.gait?.cadence_steps_per_min),
+  double_support: M("Double support", "#af52de", "%", 1, (d) => d.gait?.double_support_pct, true),
+  resting_hr: M("Resting heart rate", "#ff3b30", "bpm", 0, (d) => d.cardiac?.resting_hr_bpm, true),
+  walking_hr: M("Walking heart rate", "#ff2d55", "bpm", 0, (d) => d.cardiac?.walking_hr_bpm, true),
   hrv: M("HRV", "#af52de", "ms", 1, (d) => d.cardiac?.hrv_ms),
-  sleep: M("睡眠时长", "#5856d6", "h", 1, (d) => d.sleep?.total_sleep_hours),
-  spo2: M("血氧饱和度", "#5ac8fa", "%", 0, (d) => d.respiratory_metabolic?.oxygen_saturation_pct),
-  body_mass: M("体重", "#ff9500", "kg", 1, (d) => d.body_measurements?.body_mass_kg),
-  steps: M("步数", "#34c759", "", 0, (d) => d.activity_rings?.step_count),
-  move_kcal: M("活动能量", "#ff3b30", "kcal", 0, (d) => d.activity_rings?.move_kcal),
+  sleep: M("Sleep duration", "#5856d6", "h", 1, (d) => d.sleep?.total_sleep_hours),
+  spo2: M("Blood oxygen", "#5ac8fa", "%", 0, (d) => d.respiratory_metabolic?.oxygen_saturation_pct),
+  body_mass: M("Weight", "#ff9500", "kg", 1, (d) => d.body_measurements?.body_mass_kg),
+  steps: M("Steps", "#34c759", "", 0, (d) => d.activity_rings?.step_count),
+  move_kcal: M("Active energy", "#ff3b30", "kcal", 0, (d) => d.activity_rings?.move_kcal),
 };
 
 const HIGHLIGHT_KEYS = ["pain", "accuracy", "asymmetry", "speed", "resting_hr", "sleep"];
 
 const CHART_SECTIONS = [
-  { title: "康复训练", keys: ["accuracy", "pain", "rating"] },
-  { title: "步态", keys: ["asymmetry", "speed", "cadence", "double_support"] },
-  { title: "心脏", keys: ["resting_hr", "walking_hr", "hrv"] },
-  { title: "睡眠与体征", keys: ["sleep", "spo2", "body_mass"] },
-  { title: "活动", keys: ["steps", "move_kcal"] },
+  { title: "Rehab training", keys: ["accuracy", "pain", "rating"] },
+  { title: "Gait", keys: ["asymmetry", "speed", "cadence", "double_support"] },
+  { title: "Heart", keys: ["resting_hr", "walking_hr", "hrv"] },
+  { title: "Sleep and vitals", keys: ["sleep", "spo2", "body_mass"] },
+  { title: "Activity", keys: ["steps", "move_kcal"] },
 ];
 
 /* ── 工具 ─────────────────────────────────── */
@@ -85,24 +85,24 @@ function buildExerciseData(p) {
 
 /* 动作专属量化字段的显示元数据 */
 const EX_METRIC_META = {
-  inversion_rom_deg: { label: "内翻活动度", unit: "°", dec: 1 },
-  eversion_rom_deg: { label: "外翻活动度", unit: "°", dec: 1 },
-  ankle_rom_deg: { label: "踝关节活动度", unit: "°", dec: 1 },
-  rom_3d_deg: { label: "3D 活动度", unit: "°", dec: 1 },
-  resistance_torque_nm: { label: "阻力矩", unit: "N·m", dec: 1 },
-  angular_velocity_deg_s: { label: "角速度", unit: "°/s", dec: 1 },
-  completion_time_sec: { label: "完成时间", unit: "s", dec: 2 },
-  trajectory_smoothness: { label: "轨迹平滑度", unit: "", dec: 2 },
-  smoothness_score: { label: "平滑度评分", unit: "", dec: 1 },
-  safety_control_score: { label: "安全控制评分", unit: "", dec: 1 },
-  peroneal_emg_uv: { label: "腓骨肌 EMG", unit: "µV", dec: 1 },
-  tibialis_anterior_emg_uv: { label: "胫骨前肌 EMG", unit: "µV", dec: 1 },
-  dorsiflexion_hold_time_sec: { label: "背屈保持时间", unit: "s", dec: 2 },
-  compensation_flag: { label: "代偿发生", unit: "", dec: 0 },
-  vgrf_newton: { label: "垂直地面反作用力", unit: "N", dec: 0 },
-  plantar_pressure_pct: { label: "足底压力占比", unit: "%", dec: 1 },
-  fatigue_decay_pct: { label: "疲劳衰减", unit: "%", dec: 1 },
-  symmetry_index_pct: { label: "对称指数", unit: "%", dec: 1 },
+  inversion_rom_deg: { label: "Inversion range", unit: "°", dec: 1 },
+  eversion_rom_deg: { label: "Eversion range", unit: "°", dec: 1 },
+  ankle_rom_deg: { label: "Ankle range", unit: "°", dec: 1 },
+  rom_3d_deg: { label: "3D range", unit: "°", dec: 1 },
+  resistance_torque_nm: { label: "Resistance torque", unit: "N·m", dec: 1 },
+  angular_velocity_deg_s: { label: "Angular velocity", unit: "°/s", dec: 1 },
+  completion_time_sec: { label: "Completion time", unit: "s", dec: 2 },
+  trajectory_smoothness: { label: "Trajectory smoothness", unit: "", dec: 2 },
+  smoothness_score: { label: "Smoothness score", unit: "", dec: 1 },
+  safety_control_score: { label: "Safety control score", unit: "", dec: 1 },
+  peroneal_emg_uv: { label: "Peroneal EMG", unit: "µV", dec: 1 },
+  tibialis_anterior_emg_uv: { label: "Tibialis anterior EMG", unit: "µV", dec: 1 },
+  dorsiflexion_hold_time_sec: { label: "Dorsiflexion hold", unit: "s", dec: 2 },
+  compensation_flag: { label: "Compensation", unit: "", dec: 0 },
+  vgrf_newton: { label: "Vertical ground reaction", unit: "N", dec: 0 },
+  plantar_pressure_pct: { label: "Plantar pressure share", unit: "%", dec: 1 },
+  fatigue_decay_pct: { label: "Fatigue decay", unit: "%", dec: 1 },
+  symmetry_index_pct: { label: "Symmetry index", unit: "%", dec: 1 },
 };
 
 const EX_PALETTE = ["#5ac8fa", "#af52de", "#ff9500", "#ff2d55", "#5856d6", "#34c759"];
@@ -130,7 +130,7 @@ function exerciseSpecs(ex, days) {
 
   const generic = [
     {
-      label: "准确率", color: "#34c759", unit: "%", dec: 1, type: "line",
+      label: "Accuracy", color: "#34c759", unit: "%", dec: 1, type: "line",
       get: (d) => {
         const e = find(d);
         // 未做（完成 0）或准确率 0 视为该天不存在
@@ -140,21 +140,21 @@ function exerciseSpecs(ex, days) {
       },
     },
     {
-      label: "完成率", color: "#007aff", unit: "%", dec: 1, type: "scatter",
+      label: "Completion rate", color: "#007aff", unit: "%", dec: 1, type: "scatter",
       get: (d) => {
         const e = find(d);
         return e && e.prescribed_reps ? (e.completed_reps / e.prescribed_reps) * 100 : null;
       },
     },
     {
-      label: "完成次数", color: "#5856d6", unit: "次", dec: 0, type: "scatter",
+      label: "Completed reps", color: "#5856d6", unit: "", dec: 0, type: "scatter",
       get: (d) => {
         const e = find(d);
         return e ? e.completed_reps : null;
       },
     },
     {
-      label: "运动中疼痛", color: "#ff3b30", unit: "", dec: 1, type: "line",
+      label: "Pain during exercise", color: "#ff3b30", unit: "", dec: 1, type: "line",
       get: (d) => {
         const e = find(d);
         return e && isNum(e.pain_during_exercise) ? e.pain_during_exercise : null;
@@ -241,7 +241,7 @@ function valueTable(days, m) {
     .filter((r) => isNum(r.v));
   return `<div class="table-wrap">
     <table class="dtable">
-      <thead><tr><th>日期</th><th>${m.label}${m.unit ? ` (${m.unit})` : ""}</th></tr></thead>
+      <thead><tr><th>Date</th><th>${m.label}${m.unit ? ` (${m.unit})` : ""}</th></tr></thead>
       <tbody>
         ${rows
           .map((r) => `<tr><td>${r.date}</td><td>${fmt(r.v, m.dec)}</td></tr>`)
@@ -304,7 +304,7 @@ function trendOf(pts) {
   if (!s || pts.length < 2) return null;
   const delta = s.last - s.first;
   const pct = s.first !== 0 ? delta / Math.abs(s.first) : 0;
-  const dir = Math.abs(pct) < 0.05 ? "基本平稳" : delta > 0 ? "上升" : "下降";
+  const dir = Math.abs(pct) < 0.05 ? "stable" : delta > 0 ? "up" : "down";
   return { dir, s };
 }
 
@@ -353,35 +353,35 @@ function exerciseAdherence(p) {
 
 function buildAIContext(p) {
   const L = [];
-  L.push(`患者 ${p.name}（${p.patient_id} / ${p.medical_record_number}），${p.age}岁，${genderZh(p.gender)}，BMI ${p.bmi}，足姿 ${p.foot_posture}，病种 ${p.condition}，康复轨迹 ${p.rehab_trajectory}，Apple Watch：${p.has_apple_watch ? "有" : "无"}。`);
+  L.push(`Patient ${p.name} (${p.patient_id} / ${p.medical_record_number}), age ${p.age}, ${genderLabel(p.gender)}, BMI ${p.bmi}, foot posture ${p.foot_posture}, condition ${p.condition}, rehab path ${p.rehab_trajectory}, Apple Watch: ${p.has_apple_watch ? "yes" : "no"}.`);
   const rec = p.latest_medical_record;
   if (rec) {
-    L.push(`\n【最近病历 ${rec.visit_date}】`);
-    L.push(`S 主观：${rec.subjective}`);
-    L.push(`O 客观：${rec.objective}`);
-    L.push(`A 评估：${rec.assessment}`);
-    L.push(`P 计划：${rec.plan}`);
-    L.push(`处方动作：` + (rec.prescribed_exercises || [])
-      .map((e) => `${e.name}（${e.target_area}，${e.category}，难度${e.difficulty}，${e.base_reps}×${e.base_sets}）`)
-      .join("；"));
+    L.push(`\n[Latest record ${rec.visit_date}]`);
+    L.push(`S subjective: ${rec.subjective}`);
+    L.push(`O objective: ${rec.objective}`);
+    L.push(`A assessment: ${rec.assessment}`);
+    L.push(`P plan: ${rec.plan}`);
+    L.push(`Prescribed exercises: ` + (rec.prescribed_exercises || [])
+      .map((e) => `${e.name} (${e.target_area}, ${e.category}, difficulty ${e.difficulty}, ${e.base_reps}×${e.base_sets})`)
+      .join("; "));
   }
-  L.push(`\n【处方依从性（30 天）】`);
+  L.push(`\n[Exercise adherence, 30 days]`);
   for (const a of exerciseAdherence(p)) {
     L.push(
-      `- ${a.name}：处方 ${a.prescribedDays} 天，完成 ${a.doneDays} 天；` +
-      `平均准确率 ${a.avgAccuracy != null ? a.avgAccuracy.toFixed(1) + "%" : "—"}，` +
-      `平均完成率 ${a.avgCompletion != null ? a.avgCompletion.toFixed(1) + "%" : "—"}，` +
-      `运动中平均疼痛 ${a.avgPain != null ? a.avgPain.toFixed(1) : "—"}`
+      `- ${a.name}: prescribed ${a.prescribedDays} days, completed ${a.doneDays} days; ` +
+      `mean accuracy ${a.avgAccuracy != null ? a.avgAccuracy.toFixed(1) + "%" : "—"}, ` +
+      `mean completion ${a.avgCompletion != null ? a.avgCompletion.toFixed(1) + "%" : "—"}, ` +
+      `mean pain during exercise ${a.avgPain != null ? a.avgPain.toFixed(1) : "—"}`
     );
   }
-  L.push(`\n【每日指标序列（日期:值）】`);
+  L.push(`\n[Daily metric series (date:value)]`);
   for (const k of AI_METRIC_KEYS) {
     const m = METRICS[k];
     const pts = seriesPoints(p, m.get);
     if (!pts.length) continue;
     const s = stats(pts);
     L.push(
-      `- ${m.label}${m.unit ? `(${m.unit})` : ""}：均值 ${s.mean.toFixed(2)}，首 ${s.first.toFixed(2)}→末 ${s.last.toFixed(2)}，范围 ${s.min.toFixed(2)}-${s.max.toFixed(2)}；序列 ` +
+      `- ${m.label}${m.unit ? `(${m.unit})` : ""}: mean ${s.mean.toFixed(2)}, first ${s.first.toFixed(2)}→last ${s.last.toFixed(2)}, range ${s.min.toFixed(2)}-${s.max.toFixed(2)}; series ` +
       pts.map((x) => `${x.date.slice(5)}:${x.v.toFixed(1)}`).join(" ")
     );
   }
@@ -390,14 +390,14 @@ function buildAIContext(p) {
 
 function buildAIMessages(p) {
   const sys =
-    "你是一名康复医学主治医师，为治疗师撰写简洁、循证的临床数据报告。要求：\n" +
-    "1. 首先依据病历(SOAP)与处方动作，判断患者是否达到预期康复标准、依从性是否达标——这是最重要的判断依据。\n" +
-    "2. 不要逐项罗列每个指标；把相关性高、或本应同向变化的指标合并分析。\n" +
-    "3. 重点分析趋势：上升/下降/恶化分别代表什么。\n" +
-    "4. 指出异常值，或某段时间明显偏高/偏低的指标，并给出可能原因。\n" +
-    "5. 检查理论上应同向变动的指标对（如 疼痛↓ 应伴随 准确率↑、步速↑、步态不对称↓；睡眠↑ 应伴随 静息心率↓、HRV↑；活动量↑ 伴随 活动能量↑），若数据中出现背离，指出并解释可能原因。\n" +
-    "6. 结合患者的年龄与性别进行解读（年龄相关的恢复预期/风险、性别相关差异）。\n" +
-    "7. 用中文，分小节：结论 / 趋势 / 异常与特殊时段 / 指标关联异常 / 建议。总 300–500 字，专业、精炼、可执行。直接输出正文，不要任何开场白。";
+    "You are a rehabilitation clinician writing a short evidence-based report for a physiotherapist.\n" +
+    "1. Use the SOAP note and prescribed exercises first to judge whether rehab goals and adherence were met.\n" +
+    "2. Do not list every metric. Group related measures that should move together.\n" +
+    "3. Explain what up, down, or worse trends mean.\n" +
+    "4. Flag outliers or unusual periods and give a likely reason.\n" +
+    "5. Check pairs that should move together (pain down with accuracy and walking speed up and gait asymmetry down; more sleep with lower resting heart rate and higher HRV; more steps with more active energy). If they diverge, say why.\n" +
+    "6. Interpret findings with the patient's age and sex in mind.\n" +
+    "7. Write in English with short sections: Conclusion / Trends / Outliers / Linked metrics / Advice. Keep it 200–350 words. Output the report only.";
   return [
     { role: "system", content: sys },
     { role: "user", content: buildAIContext(p) },
@@ -412,29 +412,29 @@ function localAnalysis(p) {
   const totalDone = adh.reduce((a, x) => a + x.doneDays, 0);
   const overall = totalPres ? Math.round((totalDone / totalPres) * 100) : 0;
 
-  out.push("【结论】");
-  out.push(`30 天内共处方 ${totalPres} 个「动作-日」，实际完成 ${totalDone} 个，总体依从性约 ${overall}%。`);
+  out.push("Conclusion");
+  out.push(`Over 30 days, ${totalPres} prescribed exercise-days were set and ${totalDone} were completed (about ${overall}% adherence).`);
   const ranked = adh.filter((x) => x.prescribedDays >= 3)
     .sort((a, b) => a.doneDays / a.prescribedDays - b.doneDays / b.prescribedDays);
   if (ranked[0] && ranked[0].doneDays === 0) {
-    out.push(`其中「${ranked[0].name}」30 天内一次未完成，而病历计划要求每日执行，属于明显未达标。`);
+    out.push(`${ranked[0].name} was not completed on any of those days, so the plan was not met.`);
   } else if (ranked[0]) {
-    out.push(`完成最差的是「${ranked[0].name}」（${ranked[0].doneDays}/${ranked[0].prescribedDays} 天）。`);
+    out.push(`The weakest completion was ${ranked[0].name} (${ranked[0].doneDays}/${ranked[0].prescribedDays} days).`);
   }
-  if (rec) out.push(`病历评估要点：${rec.assessment}`);
+  if (rec) out.push(`Assessment from the record: ${rec.assessment}`);
 
-  out.push("\n【趋势】");
+  out.push("\nTrends");
   for (const k of ["pain", "accuracy", "asymmetry", "speed", "resting_hr", "sleep"]) {
     const m = METRICS[k];
     const pts = seriesPoints(p, m.get);
     const t = trendOf(pts);
     if (!t) continue;
-    const good = m.betterDown ? t.dir === "下降" : t.dir === "上升";
-    const tag = t.dir === "基本平稳" ? "，保持稳定" : good ? "，方向良好" : "，方向不利";
-    out.push(`- ${m.label}：${t.s.first.toFixed(1)} → ${t.s.last.toFixed(1)}（${t.dir}）${tag}`);
+    const good = m.betterDown ? t.dir === "down" : t.dir === "up";
+    const tag = t.dir === "stable" ? ", staying steady" : good ? ", a helpful direction" : ", an unhelpful direction";
+    out.push(`- ${m.label}: ${t.s.first.toFixed(1)} → ${t.s.last.toFixed(1)} (${t.dir})${tag}`);
   }
 
-  out.push("\n【异常与特殊时段】");
+  out.push("\nOutliers");
   let anyOut = false;
   for (const k of ["pain", "asymmetry", "resting_hr", "sleep", "speed"]) {
     const m = METRICS[k];
@@ -442,17 +442,17 @@ function localAnalysis(p) {
     const os = outliers(pts);
     if (os.length) {
       anyOut = true;
-      out.push(`- ${m.label} 异常点：` + os.map((o) => `${o.date.slice(5)}(${o.v.toFixed(1)})`).join("、"));
+      out.push(`- ${m.label} outliers: ` + os.map((o) => `${o.date.slice(5)} (${o.v.toFixed(1)})`).join(", "));
     }
   }
-  if (!anyOut) out.push("- 未发现明显超出 ±1.8σ 的异常点。");
+  if (!anyOut) out.push("- No clear points beyond ±1.8σ.");
 
-  out.push("\n【指标关联异常】");
+  out.push("\nLinked metrics");
   const pairs = [
-    { a: "pain", b: "accuracy", expect: "负相关", expectSign: -1, note: "疼痛升高通常伴随准确率下降" },
-    { a: "asymmetry", b: "speed", expect: "负相关", expectSign: -1, note: "步态不对称降低通常伴随步速提升" },
-    { a: "sleep", b: "resting_hr", expect: "负相关", expectSign: -1, note: "睡眠充足通常伴随静息心率下降" },
-    { a: "steps", b: "move_kcal", expect: "正相关", expectSign: 1, note: "步数与活动能量应同步" },
+    { a: "pain", b: "accuracy", expect: "inverse", expectSign: -1, note: "higher pain usually means lower accuracy" },
+    { a: "asymmetry", b: "speed", expect: "inverse", expectSign: -1, note: "less gait asymmetry usually means faster walking" },
+    { a: "sleep", b: "resting_hr", expect: "inverse", expectSign: -1, note: "more sleep usually means a lower resting heart rate" },
+    { a: "steps", b: "move_kcal", expect: "together", expectSign: 1, note: "steps and active energy should rise together" },
   ];
   let anyCorr = false;
   for (const pr of pairs) {
@@ -462,13 +462,13 @@ function localAnalysis(p) {
     const ok = Math.sign(r) === pr.expectSign;
     if (!ok && Math.abs(r) >= 0.3) {
       anyCorr = true;
-      out.push(`- ${METRICS[pr.a].label} 与 ${METRICS[pr.b].label} 理论应为${pr.expect}，实测 r=${r.toFixed(2)} 出现背离（${pr.note}）。`);
+      out.push(`- ${METRICS[pr.a].label} and ${METRICS[pr.b].label} should move ${pr.expect}; measured r=${r.toFixed(2)} diverges (${pr.note}).`);
     }
   }
-  if (!anyCorr) out.push("- 主要指标对的关联方向与理论一致，未见明显背离。");
+  if (!anyCorr) out.push("- Main metric pairs moved in the expected direction.");
 
-  out.push("\n【建议】");
-  out.push("建议优先复核依从性差的动作与上述异常时段，结合症状与疼痛评分调整处方强度并安排随访。");
+  out.push("\nAdvice");
+  out.push("Review the least-completed exercises and the unusual days above, then adjust dose with pain scores and book follow-up.");
   return out.join("\n");
 }
 
@@ -579,49 +579,49 @@ function renderDetail(p) {
   const rr = latest.activity_rings || {};
 
   const rings = [
-    { label: "活动能量", value: rr.move_kcal, goal: rr.move_goal_kcal, color: "#ff3b30", unit: "kcal" },
-    { label: "锻炼", value: rr.exercise_minutes, goal: rr.exercise_goal_minutes, color: "#34c759", unit: "分钟" },
-    { label: "站立", value: rr.stand_hours, goal: rr.stand_goal_hours, color: "#007aff", unit: "小时" },
+    { label: "Active energy", value: rr.move_kcal, goal: rr.move_goal_kcal, color: "#ff3b30", unit: "kcal" },
+    { label: "Exercise", value: rr.exercise_minutes, goal: rr.exercise_goal_minutes, color: "#34c759", unit: "min" },
+    { label: "Stand", value: rr.stand_hours, goal: rr.stand_goal_hours, color: "#007aff", unit: "h" },
   ];
 
   const infoRows = [
-    metricRow("病历号 (MRN)", p.medical_record_number),
-    metricRow("病种", p.condition),
-    metricRow("年龄 / 性别", `${p.age} 岁 / ${genderZh(p.gender)}`),
+    metricRow("Record number (MRN)", p.medical_record_number),
+    metricRow("Condition", p.condition),
+    metricRow("Age / sex", `${p.age} / ${genderLabel(p.gender)}`),
     metricRow("BMI", p.bmi),
-    metricRow("足姿", p.foot_posture),
-    metricRow("设备", p.has_apple_watch ? "Apple Watch" : "无（无心脏/睡眠数据）"),
-    metricRow("康复轨迹", p.rehab_trajectory),
-    p.baseline ? metricRow("基线疼痛", `${p.baseline.pain_vas}`) : "",
-    p.baseline ? metricRow("基线步速", `${p.baseline.walking_speed_mps}`) : "",
+    metricRow("Foot posture", p.foot_posture),
+    metricRow("Device", p.has_apple_watch ? "Apple Watch" : "None (no heart or sleep data)"),
+    metricRow("Rehab path", p.rehab_trajectory),
+    p.baseline ? metricRow("Baseline pain", `${p.baseline.pain_vas}`) : "",
+    p.baseline ? metricRow("Baseline walking speed", `${p.baseline.walking_speed_mps}`) : "",
   ];
 
   const statusRows = [
     hasRehab
       ? metricRow(
-          "今日训练",
+          "Today's exercise",
           latest.rehab.exercise_completed
-            ? `<span class="pill pill--ok">已完成</span>`
-            : `<span class="pill pill--no">未完成</span>`
+            ? `<span class="pill pill--ok">Done</span>`
+            : `<span class="pill pill--no">Not done</span>`
         )
       : "",
-    hasRehab ? metricRow("今日疼痛", `${fmt(latest.rehab.pain_vas, 1)} VAS`) : "",
-    metricRow("疲劳程度", `${fmt(latest.symptoms?.fatigue_level, 1)} / 10`),
-    metricRow("头晕", latest.symptoms?.dizziness_reported ? "有" : "无"),
-    metricRow("静息心率", `${fmt(latest.cardiac?.resting_hr_bpm, 0)} bpm`),
-    metricRow("血氧", `${fmt(latest.respiratory_metabolic?.oxygen_saturation_pct, 0)} %`),
-    metricRow("睡眠", `${fmt(latest.sleep?.total_sleep_hours, 1)} h`),
-    metricRow("步数", `${fmt(latest.activity_rings?.step_count, 0)}`),
+    hasRehab ? metricRow("Today's pain", `${fmt(latest.rehab.pain_vas, 1)} VAS`) : "",
+    metricRow("Fatigue", `${fmt(latest.symptoms?.fatigue_level, 1)} / 10`),
+    metricRow("Dizziness", latest.symptoms?.dizziness_reported ? "Yes" : "No"),
+    metricRow("Resting heart rate", `${fmt(latest.cardiac?.resting_hr_bpm, 0)} bpm`),
+    metricRow("Blood oxygen", `${fmt(latest.respiratory_metabolic?.oxygen_saturation_pct, 0)} %`),
+    metricRow("Sleep", `${fmt(latest.sleep?.total_sleep_hours, 1)} h`),
+    metricRow("Steps", `${fmt(latest.activity_rings?.step_count, 0)}`),
   ];
 
   const rec = p.latest_medical_record;
   const prescribed = (rec && rec.prescribed_exercises) || [];
   const prescribedCard = prescribed.length
     ? `<div class="card">
-        <h3>本次处方动作</h3>
+        <h3>This visit's exercises</h3>
         <div class="table-wrap">
           <table class="dtable">
-            <thead><tr><th>动作</th><th>部位</th><th>类别</th><th>难度</th><th>处方</th></tr></thead>
+            <thead><tr><th>Exercise</th><th>Area</th><th>Type</th><th>Level</th><th>Dose</th></tr></thead>
             <tbody>
               ${prescribed
                 .map(
@@ -641,15 +641,15 @@ function renderDetail(p) {
     : "";
   const medicalBlock = rec
     ? `
-    <div class="section-title">病历记录 · 最近就诊（${rec.visit_date}）</div>
+    <div class="section-title">Medical record · last visit (${rec.visit_date})</div>
     <div class="grid">
       <div class="card">
-        <h3>SOAP 记录</h3>
+        <h3>SOAP note</h3>
         <div class="soap">
-          <div class="soap__row"><span class="soap__k">S 主观</span><p>${rec.subjective}</p></div>
-          <div class="soap__row"><span class="soap__k">O 客观</span><p>${rec.objective}</p></div>
-          <div class="soap__row"><span class="soap__k">A 评估</span><p>${rec.assessment}</p></div>
-          <div class="soap__row"><span class="soap__k">P 计划</span><p>${rec.plan}</p></div>
+          <div class="soap__row"><span class="soap__k">S subjective</span><p>${rec.subjective}</p></div>
+          <div class="soap__row"><span class="soap__k">O objective</span><p>${rec.objective}</p></div>
+          <div class="soap__row"><span class="soap__k">A assessment</span><p>${rec.assessment}</p></div>
+          <div class="soap__row"><span class="soap__k">P plan</span><p>${rec.plan}</p></div>
         </div>
       </div>
       ${prescribedCard}
@@ -659,13 +659,13 @@ function renderDetail(p) {
   const exs = buildExerciseData(p);
   const exBlock = exs.length
     ? `
-    <div class="section-title">康复量化</div>
+    <div class="section-title">Rehab measures</div>
     <div class="card">
-      <h3>处方动作</h3>
+      <h3>Prescribed exercises</h3>
       <div class="table-wrap">
         <table class="dtable">
           <thead>
-            <tr><th>动作</th><th>部位</th><th>类别</th><th>难度</th><th>处方</th><th>处方天数</th><th>完成天数</th></tr>
+            <tr><th>Exercise</th><th>Area</th><th>Type</th><th>Level</th><th>Dose</th><th>Days set</th><th>Days done</th></tr>
           </thead>
           <tbody>
             ${exs
@@ -690,7 +690,7 @@ function renderDetail(p) {
         (ex) => `
       <div class="exercise-head">
         <span class="ex-title">${ex.name}</span>
-        <span class="ex-meta">${ex.target_area} · ${ex.category} · 难度 ${"●".repeat(ex.difficulty)}${"○".repeat(Math.max(0, 3 - ex.difficulty))} · 处方 ${ex.prescribed_reps}×${ex.prescribed_sets}</span>
+        <span class="ex-meta">${ex.target_area} · ${ex.category} · level ${"●".repeat(ex.difficulty)}${"○".repeat(Math.max(0, 3 - ex.difficulty))} · dose ${ex.prescribed_reps}×${ex.prescribed_sets}</span>
       </div>
       <div class="panel-row">
         ${exerciseSpecs(ex, days).map((m) => metricPanel(days, m, m.type)).join("")}
@@ -715,14 +715,14 @@ function renderDetail(p) {
     <div class="patient-head">
       <h2>${p.name}</h2>
       <div class="meta">
-        ${p.condition} · ${p.age} 岁 · ${genderZh(p.gender)} · BMI ${p.bmi}
+        ${p.condition} · age ${p.age} · ${genderLabel(p.gender)} · BMI ${p.bmi}
         <span class="mrn">${p.medical_record_number}</span>
       </div>
     </div>
 
     ${aiBoxHtml()}
 
-    <div class="section-title">概览 · 最近一日（${latest.date}）</div>
+    <div class="section-title">Overview · latest day (${latest.date})</div>
     <div class="highlights">
       ${HIGHLIGHT_KEYS.filter((k) => hasData(series(p, k)))
         .map((k) => highlightCard(p, k))
@@ -746,12 +746,12 @@ function renderDetail(p) {
       ${
         hasRehab
           ? `<div class="card">
-        <h3>康复依从性</h3>
+        <h3>Rehab adherence</h3>
         <div class="rings__v" style="font-size:32px;margin:4px 0 8px">${adherence}%</div>
-        ${metricRow("完成次数", `${completed} / ${days.length} 天`)}
-        ${metricRow("近 7 天完成", `${days.slice(-7).filter((d) => d.rehab?.exercise_completed).length} / 7`)}
+        ${metricRow("Days completed", `${completed} / ${days.length}`)}
+        ${metricRow("Last 7 days", `${days.slice(-7).filter((d) => d.rehab?.exercise_completed).length} / 7`)}
         ${metricRow(
-          "平均准确率",
+          "Mean accuracy",
           `${fmt(
             days.filter((d) => isNum(d.rehab?.exercise_accuracy_pct)).reduce((a, d) => a + d.rehab.exercise_accuracy_pct, 0) /
               Math.max(1, days.filter((d) => isNum(d.rehab?.exercise_accuracy_pct)).length),
@@ -762,11 +762,11 @@ function renderDetail(p) {
           : ""
       }
       <div class="card">
-        <h3>今日状态</h3>
+        <h3>Today's status</h3>
         <div class="metric-list">${statusRows.join("")}</div>
       </div>
       <div class="card">
-        <h3>患者信息</h3>
+        <h3>Patient information</h3>
         <div class="metric-list">${infoRows.join("")}</div>
       </div>
     </div>

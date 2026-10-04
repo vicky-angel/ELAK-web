@@ -241,9 +241,6 @@ def serve_calendar() -> dict:
 def watch_calendar() -> None:
     while True:
         refresh_calendar()
-        wanted = drop_archived_events(POSTED_ELAK.get("events") or [])
-        if wanted:
-            write_calendar_events("elak:clinic", wanted, False)
         time.sleep(WATCH_SECONDS)
 
 

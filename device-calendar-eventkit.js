@@ -80,39 +80,32 @@ function eventCals(store) {
 
 function destCalendar(store) {
   const cals = eventCals(store);
-  function skipHidden(cal) {
-    return /^ELAK$/i.test(unwrap(cal.title));
+  function hidden(cal) {
+    return /^ELAK$/i.test(unwrap(cal && cal.title));
   }
-  let icloudWork = null;
-  let icloudHome = null;
-  let other = null;
-  for (let i = 0; i < Number(cals.count); i++) {
-    const cal = cals.objectAtIndex(i);
-    if (skipHidden(cal)) continue;
-    const name = unwrap(cal.title);
-    const src = unwrap(cal.source && cal.source.title);
-    if (/工作|Work/i.test(name)) icloudWork = cal;
-    else if (/个人|個人|Home|Personal/i.test(name)) icloudHome = cal;
-    else if (!other) other = cal;
-  }
-  const fallback = icloudWork || icloudHome || other || store.defaultCalendarForNewEvents;
-  if (!Number(cals.count)) return fallback;
   const start = $.NSDate.dateWithTimeIntervalSinceNow(-21 * 86400);
   const end = $.NSDate.dateWithTimeIntervalSinceNow(21 * 86400);
-  const pred = store.predicateForEventsWithStartDateEndDateCalendars(start, end, cals);
-  const evs = store.eventsMatchingPredicate(pred);
-  let lifeCal = null;
-  for (let i = 0; i < Number(evs.count); i++) {
-    const ev = evs.objectAtIndex(i);
-    const title = unwrap(ev.title);
-    const notes = unwrap(ev.notes);
-    const uid = unwrap(ev.eventIdentifier);
-    const cal = ev.calendar;
-    if (!cal || skipHidden(cal)) continue;
-    if (/ELAK|next visit/i.test(title) || /elak:/i.test(notes) || /elak-/i.test(uid)) continue;
-    if (/^life(\b|[.\s]|$)/i.test(title)) lifeCal = cal;
+  if (Number(cals.count)) {
+    const pred = store.predicateForEventsWithStartDateEndDateCalendars(start, end, cals);
+    const evs = store.eventsMatchingPredicate(pred);
+    for (let i = 0; i < Number(evs.count); i++) {
+      const ev = evs.objectAtIndex(i);
+      const title = unwrap(ev.title);
+      const notes = unwrap(ev.notes);
+      const uid = unwrap(ev.eventIdentifier);
+      const cal = ev.calendar;
+      if (!cal || hidden(cal)) continue;
+      if (/ELAK|next visit/i.test(title) || /elak:/i.test(notes) || /elak-/i.test(uid)) continue;
+      if (/^life(\b|[.\s]|$)/i.test(title)) return cal;
+    }
   }
-  return lifeCal || fallback;
+  const def = store.defaultCalendarForNewEvents;
+  if (def && !hidden(def)) return def;
+  for (let i = 0; i < Number(cals.count); i++) {
+    const cal = cals.objectAtIndex(i);
+    if (!hidden(cal)) return cal;
+  }
+  return def || null;
 }
 
 function readEvents() {

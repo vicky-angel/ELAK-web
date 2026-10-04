@@ -801,6 +801,7 @@ async function saveVisit(event) {
       painRule: "Stop if the ankle sharp-pains, swells, or goes numb.",
       sentence: "Time for your ankle practice."
     });
+    if (typeof clipCycleToVisit === "function") clipCycleToVisit(existing, existing.cycle);
     existing.rewards = existing.rewards || [];
     data.plans[code] = existing;
     savePlans(data);

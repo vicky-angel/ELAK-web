@@ -747,8 +747,12 @@ function elakPlanEvents(plan) {
   if (cycle && Array.isArray(cycle.slots)) {
     cycle.slots.forEach((slot) => {
       if (!slot || !slot.start) return;
+      if (typeof isPracticeDay === "function" && slot.date && !isPracticeDay(plan, slot.date)) return;
       const start = new Date(slot.start);
       if (Number.isNaN(start.getTime())) return;
+      const visit = typeof nextVisitDayKey === "function" ? nextVisitDayKey(plan) : "";
+      const slotDay = slot.date || (typeof dayKey === "function" ? dayKey(start) : "");
+      if (visit && slotDay && slotDay >= visit) return;
       out.push({
         source: "elak",
         who: "patient",
@@ -770,8 +774,13 @@ function elakPlanEvents(plan) {
       });
     }
   }
+  const visitDay = typeof nextVisitDayKey === "function" ? nextVisitDayKey(plan) : "";
   (plan && plan.calendar || []).forEach((event) => {
     if (!event || event.source !== "elak" || !event.start) return;
+    if (visitDay && calendarEventKind(event) === "practice") {
+      const key = calendarDayKey(event.start) || (typeof dayKey === "function" ? dayKey(event.start) : "");
+      if (key && key >= visitDay) return;
+    }
     out.push({
       source: "elak",
       who: event.who || "patient",
@@ -1493,19 +1502,23 @@ function kaleApplyApproved(plan, req) {
   const visit = typeof latestVisit === "function" ? latestVisit(plan) : null;
   const cycle = typeof cycleOf === "function" ? cycleOf(plan) : plan.cycle;
   if (!visit || !cycle) return "There is no home plan to edit yet.";
-  if (req.kind === "shift_week" || Number(req.shiftDays) > 0) {
-    const days = Number(req.shiftDays) || 7;
+  if (req.kind === "shift_week" || req.kind === "shift_days" || Number(req.shiftDays) > 0) {
+    const days = Number(req.shiftDays) > 0 ? Number(req.shiftDays) : 7;
     const today = typeof dayKey === "function" ? dayKey(new Date()) : "";
-    const thisMon = typeof mondayOf === "function" ? mondayOf(new Date()) : "";
-    const nextMon = thisMon && typeof shiftDay === "function" ? shiftDay(thisMon, 7) : "";
-    const window = nextMon && typeof weekDays === "function" ? weekDays(nextMon) : [];
-    const open = (cycle.slots || []).filter((slot) => !(slot.status && String(slot.status).startsWith("done")) && (!today || slot.date >= today));
-    const targets = window.length ? open.filter((slot) => window.indexOf(slot.date) >= 0) : [];
-    (targets.length ? targets : open).forEach((slot) => {
+    const visit = typeof nextVisitDayKey === "function" ? nextVisitDayKey(plan) : "";
+    (cycle.slots || []).forEach((slot) => {
+      if (!slot || (slot.status && String(slot.status).startsWith("done"))) return;
+      if (today && slot.date < today) return;
       if (typeof shiftDay === "function") slot.date = shiftDay(slot.date, days);
       slot.start = "";
       slot.status = "rebook";
     });
+    cycle.slots = (cycle.slots || []).filter((slot) => {
+      if (!slot || !slot.date) return false;
+      if (visit && slot.date >= visit && !(slot.status && String(slot.status).startsWith("done"))) return false;
+      return true;
+    });
+    if (typeof clipCycleToVisit === "function") clipCycleToVisit(plan, cycle);
     if (cycle.periodEnd && typeof dayKey === "function" && typeof shiftDay === "function") {
       const last = (cycle.slots || []).reduce((max, slot) => (slot.date > max ? slot.date : max), dayKey(cycle.periodEnd));
       if (last > dayKey(cycle.periodEnd)) cycle.periodEnd = last + "T12:00:00";
@@ -1517,7 +1530,12 @@ function kaleApplyApproved(plan, req) {
     const live = loadPlans().plans[plan.code] || plan;
     if (typeof notifyPracticePlan === "function") notifyPracticePlan(live);
     if (typeof refreshMeta === "function") refreshMeta();
-    return "Next week's home practice was moved.";
+    if (days === 1) return "Home practice was moved by 1 day.";
+    if (days % 7 === 0) {
+      const weeks = days / 7;
+      return "Home practice was moved by " + weeks + " week" + (weeks === 1 ? "" : "s") + ".";
+    }
+    return "Home practice was moved by " + days + " days.";
   }
   if ((req.kind === "reduce_days" || req.daysPerWeek != null) && typeof buddySetDays === "function") {
     return buddySetDays(plan, Number(req.daysPerWeek));

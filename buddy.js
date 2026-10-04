@@ -249,7 +249,7 @@ function kaleFacts(plan) {
   const cycle = plan && (typeof cycleOf === "function" ? cycleOf(plan) : plan.cycle);
   const slot = buddyTodaySlot(plan);
   const pending = ((plan && plan.kaleRequests) || []).filter((row) => row && row.status === "pending");
-  const times = (cycle && cycle.slots || []).filter((item) => item.start).slice(0, 8).map((item) => buddyWeekday(item.date) + " " + buddyClock(item.start));
+  const times = (cycle && cycle.slots || []).filter((item) => item.start && (typeof isPracticeDay !== "function" || isPracticeDay(plan, item.date))).slice(0, 8).map((item) => buddyWeekday(item.date) + " " + buddyClock(item.start));
   const visit = typeof latestVisit === "function" ? latestVisit(plan) : (plan && plan.visits && plan.visits[plan.visits.length - 1]);
   const growth = typeof avatarGrowthOf === "function" ? avatarGrowthOf(plan) : Number(plan && plan.avatarGrowth) || 0;
   const appt = plan && plan.appointment;
@@ -376,28 +376,63 @@ function kaleApiUrls() {
 
 function kaleNeedsApproval(text) {
   const t = String(text || "").toLowerCase();
-  const change = /reschedule|postpone|push|delay|week after|next week|skip|reduce|fewer|less|only \d|rest week|move (the )?(week|plan|exercises)/.test(t);
+  const glued = t.replace(/[^a-z0-9]+/g, "");
+  const change = /reschedule|postpone|push|delay|week after|next week|skip|reduce|fewer|less|only \d|rest week|move (the )?(week|plan|exercises)/.test(t)
+    || /pushback|reschedule|postpone|delayby|moveback/.test(glued);
   if (kaleAskingMedical(t) && !change) return false;
   const hardship = /tired|period|menstrual|cramp|sick|ill|unwell|fatigue|pain|sore|hurt|nause|dizzy|bleed|cannot|can't|cant|too much|overwhelmed/.test(t);
   return change || (hardship && /exercise|practice|plan|week|session|today|tomorrow/.test(t));
 }
 
+const KALE_WORD_NUM = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, fourteen: 14 };
+
+function kaleShiftSummary(days) {
+  const n = Math.max(1, Number(days) || 7);
+  if (n === 1) return "Move home practice later by 1 day.";
+  if (n % 7 === 0) {
+    const weeks = n / 7;
+    return "Move home practice later by " + weeks + " week" + (weeks === 1 ? "" : "s") + ".";
+  }
+  return "Move home practice later by " + n + " days.";
+}
+
+function kaleParseShiftDays(text) {
+  const t = String(text || "").toLowerCase();
+  const compact = t.replace(/[^a-z0-9]+/g, " ").trim();
+  const glued = t.replace(/[^a-z0-9]+/g, "");
+  const word = "a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fourteen|\\d+";
+  let match = compact.match(new RegExp("\\b(" + word + ")\\s*(day|days|week|weeks)\\b"));
+  if (!match) match = glued.match(new RegExp("(" + word.replace(/\|/g, "|") + ")(day|days|week|weeks)"));
+  if (match) {
+    const raw = match[1];
+    const n = KALE_WORD_NUM[raw] != null ? KALE_WORD_NUM[raw] : Number(raw);
+    if (n > 0) return { days: match[2].indexOf("week") === 0 ? n * 7 : n, explicit: true };
+  }
+  if (/\btomorrow\b/.test(compact) || /byoneday|oneday|adaylater/.test(glued)) return { days: 1, explicit: true };
+  if (/next week|week after|a week|one week/.test(compact) || /nextweek|weekafter/.test(glued)) return { days: 7, explicit: true };
+  return { days: 7, explicit: false };
+}
+
 function kaleDraftRequest(plan, text) {
   const t = String(text || "").toLowerCase();
+  const glued = t.replace(/[^a-z0-9]+/g, "");
   const facts = kaleFacts(plan);
-  const daysMatch = t.match(/(\d)\s*days?/);
-  const shift = /week after|next week|postpone|reschedule|push|delay|later/.test(t);
-  const reduce = /reduce|fewer|less|only \d|lighter/.test(t);
-  if (shift) {
+  const weekly = /(?:days?\s*(?:a|per|each)\s*week|each week|per week|a week)/.test(t);
+  const daysMatch = t.match(/(\d+)\s*days?/);
+  const shift = /week after|next week|postpone|reschedule|push|delay|later/.test(t) || /pushback|reschedule|postpone|delayby|moveback/.test(glued);
+  const reduce = /reduce|fewer|less|only \d|lighter/.test(t) && (weekly || /reduce|fewer|less|lighter/.test(t));
+  const amount = kaleParseShiftDays(text);
+  if (shift || (amount.explicit && !weekly && !/only \d/.test(t))) {
+    const shiftDays = amount.explicit ? amount.days : 7;
     return {
-      kind: "shift_week",
-      shiftDays: 7,
-      daysPerWeek: reduce ? (daysMatch ? Number(daysMatch[1]) : Math.max(1, (facts.daysPerWeek || 3) - 1)) : null,
+      kind: shiftDays === 7 ? "shift_week" : "shift_days",
+      shiftDays,
+      daysPerWeek: reduce && daysMatch ? Number(daysMatch[1]) : null,
       reason: text,
-      summary: "Move next week's home practice to the week after" + (reduce ? ", or reduce the weekly load if that is better" : "") + "."
+      summary: kaleShiftSummary(shiftDays) + (reduce && daysMatch ? " Also reduce home practice to " + daysMatch[1] + " days each week." : "")
     };
   }
-  if (reduce || daysMatch) {
+  if (reduce || (weekly && daysMatch)) {
     const n = daysMatch ? Number(daysMatch[1]) : Math.max(1, (facts.daysPerWeek || 3) - 1);
     return {
       kind: "reduce_days",
@@ -412,8 +447,17 @@ function kaleDraftRequest(plan, text) {
     shiftDays: 7,
     daysPerWeek: null,
     reason: text,
-    summary: "Move next week's home practice to the week after."
+    summary: kaleShiftSummary(7)
   };
+}
+
+function kaleApprovalSay(plan, draft) {
+  const facts = kaleFacts(plan);
+  const names = facts.exercises.length ? facts.exercises.join(", ") : "your ankle set";
+  const booked = facts.booked.length ? " This week is booked on " + facts.booked.join("; ") + "." : "";
+  return "I hear you. I will not change the home plan on my own. Right now your set is " + names + "." + booked +
+    " I am sending your clinician a request to " + String(draft.summary || "").replace(/\.$/, "").toLowerCase() +
+    ". They will approve or keep the current plan, and I will notify you either way.";
 }
 
 function kaleFileRequest(plan, draft, patientNote) {
@@ -427,7 +471,7 @@ function kaleFileRequest(plan, draft, patientNote) {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
     status: "pending",
     kind: draft.kind || "shift_week",
-    shiftDays: Number(draft.shiftDays) || 7,
+    shiftDays: draft.kind === "reduce_days" ? 0 : (Number(draft.shiftDays) > 0 ? Number(draft.shiftDays) : 7),
     daysPerWeek: draft.daysPerWeek == null ? null : Number(draft.daysPerWeek),
     reason: draft.reason || patientNote || "",
     summary: draft.summary || "Home exercise change",
@@ -477,14 +521,7 @@ function kaleLocalThink(ask) {
   if (kaleAskingMedical(raw) && !kaleNeedsApproval(raw)) return kaleMedicalAnswer(ask, ask.medical);
   if (kaleNeedsApproval(raw)) {
     const draft = kaleDraftRequest(plan, raw);
-    const names = facts.exercises.length ? facts.exercises.join(", ") : "your ankle set";
-    const booked = facts.booked.length ? " This week is booked on " + facts.booked.join("; ") + "." : "";
-    return {
-      say: "I hear you. I will not change the home plan on my own. Right now your set is " + names + "." + booked +
-        " I am sending your clinician a request to " + draft.summary.replace(/\.$/, "").toLowerCase() +
-        " They will approve or keep the current week, and I will notify you either way.",
-      request: draft
-    };
+    return { say: kaleApprovalSay(plan, draft), request: draft };
   }
   if (/help|what can you/.test(t)) {
     return { say: "Ask what is today, ask for a Friday time, or tell me if you need the week moved or reduced. Those last two go to your clinician first.", request: null };
@@ -540,7 +577,11 @@ async function kaleThink(ask, signal) {
         continue;
       }
       let request = result.needsApproval === false ? null : (result.request || null);
-      if (!request && kaleNeedsApproval(ask.text) && ask.side === "patient") request = local.request;
+      if (kaleNeedsApproval(ask.text) && ask.side === "patient") {
+        const draft = local.request || kaleDraftRequest(ask.plan, ask.text);
+        request = Object.assign({}, request || {}, draft, { reason: ask.text, summary: draft.summary, shiftDays: draft.shiftDays, kind: draft.kind });
+        return { say: kaleApprovalSay(ask.plan, draft), request };
+      }
       if (request && !request.summary) request = Object.assign(kaleDraftRequest(ask.plan, ask.text), request);
       return { say: String(result.say).trim(), request };
     } catch (err) {
@@ -899,7 +940,7 @@ function paintBuddyChips() {
   const side = buddySide();
   const chips = side === "clinic"
     ? ["What is today?", "Only 4 days a week", "Send a reminder"]
-    : ["What is today?", "I have sharp pain during practice", "Friday at 4pm"];
+    : ["What is today?", "Push back by one day", "Friday at 4pm"];
   chips.forEach((label) => {
     const btn = document.createElement("button");
     btn.type = "button";

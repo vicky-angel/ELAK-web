@@ -51,9 +51,12 @@ def system_prompt() -> str:
         "Do not diagnose a new condition or prescribe a new treatment. Two to six short sentences. "
         "If they only want a medical explanation, needsApproval is false. "
         "If they want to reschedule, postpone, skip, or reduce home exercises, set needsApproval to true and do not "
-        "claim the plan already changed. Propose one concrete change. "
+        "claim the plan already changed. Propose one concrete change that matches the amount they named. "
+        "'one day' or '1 day' => shiftDays 1 and summary 'Move home practice later by 1 day'. "
+        "'two days' => shiftDays 2. 'one week' or 'next week' => shiftDays 7. "
+        "Never default to a week if they named a different delay. "
         "Return JSON only with keys: say (string), needsApproval (boolean), request (object or null). "
-        "request keys: kind (shift_week|reduce_days|reduce_set), shiftDays (number), daysPerWeek (number or null), "
+        "request keys: kind (shift_week|shift_days|reduce_days|reduce_set), shiftDays (number), daysPerWeek (number or null), "
         "reason (string), summary (string). If no plan change is needed, request is null and needsApproval is false."
     )
 

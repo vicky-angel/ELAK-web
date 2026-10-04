@@ -107,6 +107,47 @@ function dayKey(value) {
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 }
 
+function nextVisitDayKey(plan) {
+  const start = plan && plan.appointment && plan.appointment.start;
+  if (!start) return "";
+  return dayKey(start);
+}
+
+function lastPracticeDayKey(plan, fallbackEnd) {
+  const visit = nextVisitDayKey(plan);
+  if (visit) {
+    if (typeof shiftDay === "function") return shiftDay(visit, -1);
+    const d = new Date(visit + "T12:00:00");
+    d.setDate(d.getDate() - 1);
+    return dayKey(d);
+  }
+  if (!fallbackEnd) return "";
+  const raw = String(fallbackEnd);
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  return dayKey(fallbackEnd);
+}
+
+function isPracticeDay(plan, dateKey) {
+  const day = String(dateKey || "");
+  if (!day) return false;
+  const visit = nextVisitDayKey(plan);
+  return !visit || day < visit;
+}
+
+function clipCycleToVisit(plan, cycle) {
+  if (!plan || !cycle || !Array.isArray(cycle.slots)) return false;
+  const visit = nextVisitDayKey(plan);
+  if (!visit) return false;
+  const last = lastPracticeDayKey(plan, cycle.periodEnd);
+  const beforeLen = cycle.slots.length;
+  const beforeEnd = cycle.periodEnd || "";
+  cycle.slots = cycle.slots.filter((slot) => slot && slot.date && slot.date < visit);
+  if (last && (!cycle.periodEnd || dayKey(cycle.periodEnd) >= visit)) {
+    cycle.periodEnd = last + "T23:59:00";
+  }
+  return cycle.slots.length !== beforeLen || cycle.periodEnd !== beforeEnd;
+}
+
 function playPointUser() {
   const plan = activePlan();
   return (typeof normalizeUsername === "function" ? normalizeUsername(plan && plan.username) : "") || "guest";
@@ -471,12 +512,14 @@ function buildCycle(plan, visit, settings) {
     daysPerWeek: clamp(Number(item.daysPerWeek) || settings.daysPerWeek || 7, 1, 7)
   }));
   const start = settings.periodStart || visit.date || new Date().toISOString();
-  const end = settings.periodEnd;
+  const visitDay = nextVisitDayKey(plan);
+  const lastPractice = lastPracticeDayKey(plan, settings.periodEnd);
+  const end = visitDay && lastPractice ? lastPractice + "T23:59:00" : settings.periodEnd;
   const part = normalizeClock(settings.timeOfDay) || settings.timeOfDay || "09:00";
   const calendar = practiceCalendar(plan);
   const minutes = boutMinutes(exercises);
   const freq = clamp(Number(settings.daysPerWeek) || 7, 1, 7);
-  const all = eachDay(start, end);
+  const all = eachDay(start, end).filter((date) => !visitDay || date < visitDay);
   const picked = all.filter((_, index) => {
     if (freq >= 7) return true;
     const week = Math.floor(index / 7);
@@ -557,10 +600,14 @@ function keepVisitOnCalendar(plan) {
 function writeAcceptedEvents(plan, cycle) {
   const data = loadPlans();
   const cur = data.plans[plan.code];
+  clipCycleToVisit(cur, cycle);
   const kept = (cur.calendar || []).filter((event) => event.source !== "elak" || isVisitEvent(event));
+  const visit = nextVisitDayKey(cur);
   for (const slot of cycle.slots) {
     if (!slot.start || (slot.status !== "accepted" && slot.status !== "rebook" && !String(slot.status || "").startsWith("done"))) continue;
     if (slot.status === "offer") continue;
+    const slotDay = slot.date || dayKey(slot.start);
+    if (visit && slotDay >= visit) continue;
     const start = new Date(slot.start);
     const end = new Date(start.getTime() + cycle.minutes * 60000);
     kept.push({
@@ -605,18 +652,22 @@ function defaultPracticeVisit() {
 }
 function applySharedPracticeTimes(plan, cycle) {
   if (!plan || !cycle || !Array.isArray(cycle.slots)) return;
+  clipCycleToVisit(plan, cycle);
   const pack = typeof patientCalendarOf === "function" ? patientCalendarOf(plan) : null;
   const extra = typeof elakPlanEvents === "function" ? elakPlanEvents(plan) : [];
   const events = [].concat((pack && pack.events) || [], plan.calendar || [], extra);
   const needles = [plan.patient, plan.username].filter(Boolean).map((s) => String(s).toLowerCase());
   cycle.slots.forEach((slot) => {
+    if (!isPracticeDay(plan, slot.date)) return;
     if (!slotNeedsPick(slot) && slot.start) return;
     const hit = events.find((event) => {
       if (!event || !event.start) return false;
+      if (typeof isVisitEvent === "function" && isVisitEvent(event)) return false;
       const key = typeof dayKey === "function" ? dayKey(event.start) : String(event.start).slice(0, 10);
       if (key !== slot.date) return false;
       const title = String(event.title || "").toLowerCase();
-      if (!/elak|practice|next visit/i.test(title)) return false;
+      if (/next visit/i.test(title)) return false;
+      if (!/elak|practice/i.test(title)) return false;
       if (needles.length && needles.some((n) => title.includes(n))) return true;
       return !needles.length;
     });
@@ -663,10 +714,13 @@ function autoBookCycle(plan) {
   const data = loadPlans();
   const cur = data.plans[plan.code] || plan;
   const cycle = cycleOf(cur);
-  if (!cycle || !cycle.slots || !cycle.slots.some(slotNeedsPick)) return false;
+  if (!cycle || !cycle.slots) return false;
+  const clipped = clipCycleToVisit(cur, cycle);
+  if (!cycle.slots.some(slotNeedsPick) && !clipped) return false;
   applyRoleCalendarsToPlan(cur);
   const busy = practiceCalendar(cur).filter((event) => !isVisitEvent(event));
   cycle.slots.forEach((slot) => {
+    if (!isPracticeDay(cur, slot.date)) return;
     if (!slotNeedsPick(slot)) return;
     const taken = busy.concat(cycle.slots.filter((other) => other.id !== slot.id && other.start).map((other) => ({
       start: other.start,

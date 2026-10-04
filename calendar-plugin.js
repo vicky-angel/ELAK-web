@@ -482,11 +482,14 @@ async function fetchCalendarJson(url, ms) {
   }
 }
 function calendarBridgeUrls() {
+  const https = typeof location !== "undefined" && location.protocol === "https:";
+  if (https) return DEVICE_CAL_BRIDGES.filter((url) => !/^https?:\/\/(127\.0\.0\.1|localhost)/i.test(url));
   return DEVICE_CAL_BRIDGES;
 }
 async function readDeviceCalendarBridge() {
+  if (window.ELAK_CAL_NO_BRIDGE) return loadRoleCalendar(pageCalendarRole());
   for (const url of calendarBridgeUrls()) {
-    const data = await fetchCalendarJson(url, 4000);
+    const data = await fetchCalendarJson(url, 1200);
     if (data && Array.isArray(data.events) && data.events.length) {
       return { source: "device", events: data.events };
     }
@@ -494,6 +497,7 @@ async function readDeviceCalendarBridge() {
       return { source: "device", events: data.events };
     }
   }
+  window.ELAK_CAL_NO_BRIDGE = true;
   return loadRoleCalendar(pageCalendarRole());
 }
 async function readDeviceCalendar(pickFile, fresh) {
@@ -631,6 +635,7 @@ function loadInbox() {
 }
 function saveInbox(box) {
   localStorage.setItem(INBOX_KEY, JSON.stringify(box));
+  if (typeof schedulePushElakStore === "function") schedulePushElakStore();
 }
 function pushInbox(side, username, note) {
   const box = loadInbox();

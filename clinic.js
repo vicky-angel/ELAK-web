@@ -47,10 +47,10 @@ function fillDose(cycle) {
 }
 function listedPlans() {
   const data = loadPlans();
-  const mine = AUTH_OFF ? "" : (authRecord() ? authRecord().id : "");
+  const mine = authRecord() ? authRecord().id : "";
   const archived = clinic.listMode === "archive";
   return Object.values(data.plans)
-    .filter((plan) => !mine || plan.clinicianId === mine)
+    .filter((plan) => !mine || !plan.clinicianId || plan.clinicianId === mine)
     .filter((plan) => archived ? !!plan.archived : !plan.archived)
     .sort((a, b) => (b.updated || "").localeCompare(a.updated || ""));
 }
@@ -1495,5 +1495,15 @@ $c("clinic-copy").addEventListener("click", async () => {
 });
 if ($c("clinic-save-login")) $c("clinic-save-login").addEventListener("click", savePatientLogin);
 
-if (clinicUiOn()) showClinicHome();
-else showGate();
+function bootClinic() {
+  if (clinicUiOn()) showClinicHome();
+  else showGate();
+}
+if (typeof pullElakStore === "function") pullElakStore().finally(bootClinic);
+else bootClinic();
+setInterval(() => {
+  if (document.hidden || typeof pullElakStore !== "function") return;
+  pullElakStore().then(() => {
+    if (clinic.page === "list" && typeof renderPatients === "function") renderPatients();
+  });
+}, 20000);

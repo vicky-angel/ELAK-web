@@ -1549,8 +1549,8 @@
 <p id="live" class="sr" aria-live="polite"></p>
 <video id="cam" playsinline muted hidden></video>
 
-<script src="shared.js?v=86"></script>
-<script src="calendar-plugin.js?v=95"></script>
+<script src="shared.js?v=87"></script>
+<script src="calendar-plugin.js?v=96"></script>
 <script src="agent.js?v=92"></script>
 <script src="kale-config.js?v=1"></script>
 <script src="buddy.js?v=101"></script>
@@ -5409,24 +5409,30 @@ if (window.speechSynthesis) {
 }
 $("overlay-miss").hidden = true;
 clearStalePatientSession();
-refreshMeta();
-if (activePlan()) {
-  show("title");
+function bootPatient() {
   refreshMeta();
-} else {
-  show("signin");
-  refreshMeta();
+  if (activePlan()) {
+    show("title");
+    refreshMeta();
+  } else {
+    show("signin");
+    refreshMeta();
+  }
 }
+if (typeof pullElakStore === "function") pullElakStore().finally(bootPatient);
+else bootPatient();
 setMode("button");
 wire();
 resize();
 requestAnimationFrame(frame);
 setInterval(() => {
+  if (document.hidden) return;
   if (S.screen === "play" || S.screen === "book" || S.screen === "story") return;
   if (anyOverlay() && $("overlay-nudge").hidden) return;
-  refreshMeta();
-  maybePromptCycle();
-}, 10000);
+  const tick = () => { refreshMeta(); maybePromptCycle(); };
+  if (typeof pullElakStore === "function") pullElakStore().finally(tick);
+  else tick();
+}, 30000);
 </script>
 <script>
   addEventListener("load", function () {

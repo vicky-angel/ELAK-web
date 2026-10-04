@@ -6,3 +6,6 @@ __pycache__/
 .DS_Store
 data/device-calendar-live.json
 data/device-calendar-write.json
+elak-store.json
+elak-store.json.tmp
+kale-api/elak-store.json

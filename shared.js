@@ -86,7 +86,10 @@ function loadPlans() {
     return { active: "", plans: {} };
   }
 }
-function savePlans(data) { localStorage.setItem(PLAN_KEY, JSON.stringify(data)); }
+function savePlans(data) {
+  localStorage.setItem(PLAN_KEY, JSON.stringify(data));
+  if (typeof schedulePushElakStore === "function") schedulePushElakStore();
+}
 const CLINICIANS_KEY = "full-range-clinicians-v1";
 const PATIENT_SESSION_KEY = "full-range-patient-session";
 const PATIENT_REMEMBER_KEY = "full-range-patient-remember";
@@ -280,7 +283,10 @@ function loadClinicians() {
   }
   return data;
 }
-function saveClinicians(data) { localStorage.setItem(CLINICIANS_KEY, JSON.stringify(data)); }
+function saveClinicians(data) {
+  localStorage.setItem(CLINICIANS_KEY, JSON.stringify(data));
+  if (typeof schedulePushElakStore === "function") schedulePushElakStore();
+}
 function clinicianSessionId() {
   const lasting = clinicRemembered() ? (localStorage.getItem(SESSION_KEY) || "") : "";
   const id = sessionStorage.getItem(SESSION_KEY) || lasting || "";
@@ -358,4 +364,142 @@ async function signInClinician(name, password) {
   persistClinicianSession(account.id, false);
   claimLegacyPlans(account.id);
   return true;
+}
+
+function elakStoreUrls() {
+  const urls = [];
+  const custom = (typeof window !== "undefined" && (window.ELAK_STORE_URL || window.ELAK_KALE_URL))
+    ? String(window.ELAK_STORE_URL || window.ELAK_KALE_URL).replace(/\/$/, "")
+    : "";
+  if (custom) urls.push(custom + "/store");
+  let origin = "";
+  try { origin = typeof location !== "undefined" ? location.origin : ""; } catch (err) { origin = ""; }
+  const onLaptop = !origin || origin === "null" || /^(https?:\/\/)?(127\.0\.0\.1|localhost)(:\d+)?$/i.test(origin);
+  if (onLaptop) {
+    urls.push("http://127.0.0.1:8767/store");
+    urls.push("http://localhost:8767/store");
+  } else if (!custom) {
+    try { urls.push(new URL("/store", origin).href); } catch (err) { /* skip */ }
+  }
+  return urls.filter((url, i) => url && urls.indexOf(url) === i);
+}
+
+function elakLocalSlice() {
+  let inbox = { clinic: [], patients: {} };
+  let buddy = { threads: {} };
+  let reports = {};
+  try { inbox = JSON.parse(localStorage.getItem("elak-inbox-v1") || '{"clinic":[],"patients":{}}'); } catch (err) { /* keep */ }
+  try { buddy = JSON.parse(localStorage.getItem("elak-buddy-v1") || '{"threads":{}}'); } catch (err) { /* keep */ }
+  try { reports = JSON.parse(localStorage.getItem("elak-health-reports-v1") || "{}"); } catch (err) { /* keep */ }
+  return {
+    plans: loadPlans().plans,
+    clinicians: loadClinicians(),
+    inbox: inbox,
+    buddy: buddy,
+    reports: reports
+  };
+}
+
+function mergeElakPlans(localPlans, remotePlans) {
+  const out = Object.assign({}, localPlans || {});
+  Object.keys(remotePlans || {}).forEach((code) => {
+    const remote = remotePlans[code];
+    const local = out[code];
+    if (!local) out[code] = remote;
+    else if (String((remote && remote.updated) || "") >= String((local && local.updated) || "")) out[code] = remote;
+  });
+  return out;
+}
+
+function applyElakStore(remote) {
+  if (!remote || typeof remote !== "object") return false;
+  const plans = loadPlans();
+  plans.plans = mergeElakPlans(plans.plans, remote.plans);
+  localStorage.setItem(PLAN_KEY, JSON.stringify(plans));
+  const clinic = loadClinicians();
+  const seen = {};
+  (clinic.accounts || []).concat(((remote.clinicians || {}).accounts) || []).forEach((row) => {
+    if (row && row.id) seen[row.id] = row;
+  });
+  clinic.accounts = Object.values(seen);
+  localStorage.setItem(CLINICIANS_KEY, JSON.stringify(clinic));
+  if (remote.inbox) {
+    try {
+      const inbox = JSON.parse(localStorage.getItem("elak-inbox-v1") || '{"clinic":[],"patients":{}}');
+      const mergeList = (a, b) => {
+        const ids = new Set();
+        return [].concat(a || [], b || []).filter((item) => {
+          const id = item && item.id;
+          if (!id) return true;
+          if (ids.has(id)) return false;
+          ids.add(id);
+          return true;
+        });
+      };
+      inbox.clinic = mergeList(inbox.clinic, remote.inbox.clinic);
+      inbox.patients = inbox.patients || {};
+      Object.keys(remote.inbox.patients || {}).forEach((key) => {
+        inbox.patients[key] = mergeList(inbox.patients[key], remote.inbox.patients[key]);
+      });
+      localStorage.setItem("elak-inbox-v1", JSON.stringify(inbox));
+    } catch (err) { /* keep local inbox */ }
+  }
+  if (remote.buddy && remote.buddy.threads) {
+    try {
+      const buddy = JSON.parse(localStorage.getItem("elak-buddy-v1") || '{"threads":{}}');
+      buddy.threads = Object.assign({}, remote.buddy.threads, buddy.threads);
+      localStorage.setItem("elak-buddy-v1", JSON.stringify(buddy));
+    } catch (err) { /* keep */ }
+  }
+  if (remote.reports) {
+    try {
+      const reports = Object.assign({}, remote.reports, JSON.parse(localStorage.getItem("elak-health-reports-v1") || "{}"));
+      localStorage.setItem("elak-health-reports-v1", JSON.stringify(reports));
+    } catch (err) { /* keep */ }
+  }
+  return true;
+}
+
+let elakStoreTimer = 0;
+let elakStoreUrl = "";
+
+async function pullElakStore() {
+  for (const url of elakStoreUrls()) {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const remote = data && (data.store || data);
+      if (!remote || typeof remote !== "object") continue;
+      elakStoreUrl = url;
+      applyElakStore(remote);
+      schedulePushElakStore();
+      return true;
+    } catch (err) { /* try next */ }
+  }
+  return false;
+}
+
+function schedulePushElakStore() {
+  if (elakStoreTimer) clearTimeout(elakStoreTimer);
+  elakStoreTimer = setTimeout(pushElakStore, 350);
+}
+
+async function pushElakStore() {
+  elakStoreTimer = 0;
+  const body = JSON.stringify(elakLocalSlice());
+  const urls = elakStoreUrl ? [elakStoreUrl] : elakStoreUrls();
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body
+      });
+      if (!res.ok) continue;
+      elakStoreUrl = url;
+      return true;
+    } catch (err) { /* try next */ }
+  }
+  return false;
 }

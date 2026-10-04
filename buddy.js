@@ -16,6 +16,7 @@ function loadBuddy() {
 }
 function saveBuddy(data) {
   localStorage.setItem(BUDDY_KEY, JSON.stringify(data));
+  if (typeof schedulePushElakStore === "function") schedulePushElakStore();
 }
 function buddyThread(username) {
   const key = normalizeUsername(username || "guest");

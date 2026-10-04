@@ -952,7 +952,7 @@ async function loadClinicCalendar() {
   }).catch(() => renderClinicOwnCalendar());
 }
 function healthEngine() {
-  return import("./health-report/js/engine.js?v=4");
+  return import("./health-report/js/engine.js?v=5");
 }
 function unreadHealthReport(plan) {
   if (!plan || typeof inboxFor !== "function") return false;

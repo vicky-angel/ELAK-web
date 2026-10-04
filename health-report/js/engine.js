@@ -3,6 +3,51 @@ import { chatStream } from "./api.js?v=1";
 import { notifyHealthReport, readSavedReport, readSavedReports, readHealthReports } from "./notify.js?v=2";
 
 const isNum = (v) => typeof v === "number" && !Number.isNaN(v);
+function hasChinese(text) {
+  return /[\u4e00-\u9fff]/.test(String(text || ""));
+}
+function translateZh(text) {
+  return String(text || "")
+    .replace(/前交叉韧带重建/g, "ACL reconstruction")
+    .replace(/髌股疼痛综合征/g, "Patellofemoral pain syndrome")
+    .replace(/踝关节骨折\/扭伤术后/g, "Ankle fracture/sprain post-op")
+    .replace(/踝关节扭伤/g, "Ankle sprain")
+    .replace(/肩关节不稳（术后）/g, "Shoulder instability (post-op)")
+    .replace(/肩关节不稳/g, "Shoulder instability")
+    .replace(/脑震荡后综合征/g, "Post-concussion syndrome")
+    .replace(/术后\/损伤后康复期/g, "post-operative / post-injury rehab")
+    .replace(/患者目前处于恶化阶段/g, "The patient is currently in a worsening phase")
+    .replace(/患者目前处于改善阶段/g, "The patient is currently in an improving phase")
+    .replace(/患者目前处于平台期/g, "The patient is currently in a plateau phase")
+    .replace(/存在疼痛和功能受限，影响日常活动和运动参与[。.]?/g, "Pain and limited function are affecting daily activity and sport.")
+    .replace(/影响日常活动和运动参与[。.]?/g, "This is affecting daily activity and sport.")
+    .replace(/[。；]/g, ". ");
+}
+function englishRecord(p, rec) {
+  if (!rec) return rec;
+  const out = Object.assign({}, rec);
+  ["subjective", "objective", "assessment", "plan"].forEach((key) => {
+    if (!hasChinese(out[key])) return;
+    const translated = translateZh(out[key]);
+    if (!hasChinese(translated)) {
+      out[key] = translated.replace(/\s+/g, " ").trim();
+      return;
+    }
+    if (key === "assessment") {
+      out[key] = (p && p.condition ? p.condition : "Rehab") +
+        " — post-injury rehabilitation. The patient is currently in the " +
+        ((p && p.rehab_trajectory) || "ongoing") +
+        " phase. Pain and limited function are affecting daily activity and sport.";
+    } else if (key === "subjective") {
+      out[key] = "The patient reports pain and difficulty with daily activity and sport.";
+    } else if (key === "objective") {
+      out[key] = "Exam shows limited motion and reduced function on the affected side.";
+    } else {
+      out[key] = "Continue the prescribed home practice and review progress at the next visit.";
+    }
+  });
+  return out;
+}
 
 const METRICS = {
   accuracy: { label: "Exercise accuracy", unit: "%", betterDown: false, get: (d) => d.rehab?.exercise_accuracy_pct },
@@ -145,7 +190,7 @@ function exerciseAdherence(p) {
 export function buildAIContext(p) {
   const L = [];
   L.push(`Patient ${p.name || p.patient_id} (${p.patient_id}${p.medical_record_number ? " / " + p.medical_record_number : ""}), age ${p.age}, ${p.gender || "—"}. BMI ${p.bmi}. Foot posture ${p.foot_posture}. Condition ${p.condition}. Rehab path ${p.rehab_trajectory}. Wearable: ${p.has_apple_watch ? "yes" : "no"}.`);
-  const rec = p.latest_medical_record;
+  const rec = englishRecord(p, p.latest_medical_record);
   if (rec) {
     L.push(`\nLatest visit ${rec.visit_date}`);
     L.push(`S: ${rec.subjective}`);
@@ -188,7 +233,7 @@ export function buildAIMessages(p) {
 
 export function localAnalysis(p) {
   const out = [];
-  const rec = p.latest_medical_record;
+  const rec = englishRecord(p, p.latest_medical_record);
   const adh = exerciseAdherence(p);
   const totalPres = adh.reduce((a, x) => a + x.prescribedDays, 0);
   const totalDone = adh.reduce((a, x) => a + x.doneDays, 0);
@@ -264,7 +309,7 @@ export async function generateHealthReport(plan, opts = {}) {
   const health = await prepareHealth(plan);
   if (!opts.force) {
     const saved = readSavedReport(plan);
-    if (saved && saved.text) return { text: saved.text, health, reused: true, at: saved.at };
+    if (saved && saved.text && !hasChinese(saved.text)) return { text: saved.text, health, reused: true, at: saved.at };
   }
   const local = localAnalysis(health);
   if (opts.onToken) opts.onToken(local, local);
@@ -275,4 +320,4 @@ export async function generateHealthReport(plan, opts = {}) {
   return { text: local, health, reused: false, at: new Date().toISOString() };
 }
 
-export { readSavedReport, readSavedReports, readHealthReports, loadPatients, matchHealthPatient };
+export { readSavedReport, readSavedReports, readHealthReports, loadPatients, matchHealthPatient, englishRecord };

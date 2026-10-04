@@ -1,7 +1,7 @@
 import { getConfig } from "./config.js?v=1";
 import { loadPatients, loadClinicPlan, matchHealthPatient, rememberHealthId, bindClinicName } from "./data.js?v=1";
 import { lineChart, scatterChart, sparkline, disposeCharts, hexToRgba } from "./charts.js?v=1";
-import { generateHealthReport, readSavedReport } from "./engine.js?v=4";
+import { generateHealthReport, readSavedReport, englishRecord } from "./engine.js?v=5";
 
 const detailEl = document.getElementById("detail");
 let patients = [];
@@ -354,7 +354,7 @@ function exerciseAdherence(p) {
 function buildAIContext(p) {
   const L = [];
   L.push(`Patient ${p.name} (${p.patient_id} / ${p.medical_record_number}), age ${p.age}, ${genderLabel(p.gender)}, BMI ${p.bmi}, foot posture ${p.foot_posture}, condition ${p.condition}, rehab path ${p.rehab_trajectory}, Apple Watch: ${p.has_apple_watch ? "yes" : "no"}.`);
-  const rec = p.latest_medical_record;
+  const rec = englishRecord(p, p.latest_medical_record);
   if (rec) {
     L.push(`\n[Latest record ${rec.visit_date}]`);
     L.push(`S subjective: ${rec.subjective}`);
@@ -406,7 +406,7 @@ function buildAIMessages(p) {
 
 function localAnalysis(p) {
   const out = [];
-  const rec = p.latest_medical_record;
+  const rec = englishRecord(p, p.latest_medical_record);
   const adh = exerciseAdherence(p);
   const totalPres = adh.reduce((a, x) => a + x.prescribedDays, 0);
   const totalDone = adh.reduce((a, x) => a + x.doneDays, 0);
@@ -532,7 +532,7 @@ function runAI(p, plan) {
     if (btn) btn.disabled = true;
     if (!force) {
       const saved = readSavedReport(plan);
-      if (saved && saved.text) {
+      if (saved && saved.text && !/[\u4e00-\u9fff]/.test(saved.text)) {
         out.innerHTML = renderMD(saved.text);
         if (statusEl) statusEl.textContent = "Saved";
         busy = false;
@@ -614,7 +614,7 @@ function renderDetail(p) {
     metricRow("Steps", `${fmt(latest.activity_rings?.step_count, 0)}`),
   ];
 
-  const rec = p.latest_medical_record;
+  const rec = englishRecord(p, p.latest_medical_record);
   const prescribed = (rec && rec.prescribed_exercises) || [];
   const prescribedCard = prescribed.length
     ? `<div class="card">

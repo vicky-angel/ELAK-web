@@ -239,6 +239,8 @@
     margin: 0;
     flex: 1;
     min-height: 0;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .reward-shell {
     width: 100%;
@@ -246,12 +248,14 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
   }
   #reward-frame {
     width: 100%;
     flex: 1 1 auto;
-    min-height: calc(100vh - 132px);
-    height: calc(100vh - 132px);
+    min-height: calc(100dvh - 132px);
+    height: calc(100dvh - 132px);
     border: 0;
     border-radius: 24px;
     background: #f6f3ec;
@@ -1149,6 +1153,10 @@
       max-width: 100%;
     }
     .play-submit { right: 20px; bottom: 18px; }
+    #reward-frame {
+      min-height: calc(100dvh - 168px);
+      height: calc(100dvh - 168px);
+    }
     .brand { white-space: nowrap; font-size: 1.15rem; }
     header { align-items: center; flex-wrap: wrap; }
     .header-actions { flex-wrap: wrap; justify-content: flex-end; max-width: 100%; }

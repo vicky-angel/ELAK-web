@@ -78,10 +78,18 @@ function eventCals(store) {
   return kept;
 }
 
+const DEST_CACHE = { id: "", at: 0 };
+
 function destCalendars(store) {
   const cals = eventCals(store);
   function hidden(cal) {
     return /^ELAK$/i.test(unwrap(cal && cal.title));
+  }
+  if (DEST_CACHE.id && Date.now() - DEST_CACHE.at < 180000) {
+    for (let i = 0; i < Number(cals.count); i++) {
+      const cal = cals.objectAtIndex(i);
+      if (unwrap(cal.calendarIdentifier) === DEST_CACHE.id) return [cal];
+    }
   }
   const found = [];
   const seen = {};
@@ -109,6 +117,10 @@ function destCalendars(store) {
       if (!hits[i].id || seen[hits[i].id]) continue;
       seen[hits[i].id] = true;
       found.push(hits[i].cal);
+    }
+    if (found.length) {
+      DEST_CACHE.id = unwrap(found[0].calendarIdentifier);
+      DEST_CACHE.at = Date.now();
     }
   }
   if (found.length) return found;

@@ -7,7 +7,7 @@
 <link rel="icon" href="elak-logo.png?v=2">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,680&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,680&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <style>
   :root {
     --bg: #f4efe4;
@@ -1604,8 +1604,8 @@
 <p id="live" class="sr" aria-live="polite"></p>
 <video id="cam" playsinline muted hidden></video>
 
-<script src="shared.js?v=89"></script>
-<script src="calendar-plugin.js?v=113"></script>
+<script src="shared.js?v=90"></script>
+<script src="calendar-plugin.js?v=114"></script>
 <script src="agent.js?v=100"></script>
 <script src="kale-config.js?v=1"></script>
 <script src="buddy.js?v=106"></script>
@@ -1872,7 +1872,13 @@ function show(screen) {
     el.toggleAttribute("hidden", !on);
   }
   if (screen !== "play") S.holding = false;
-  if (screen === "play") requestAnimationFrame(resize);
+  if (screen === "play") {
+    requestAnimationFrame(resize);
+    if (!S.playFrame) {
+      S.playFrame = true;
+      requestAnimationFrame(frame);
+    }
+  }
   if (screen !== "story") stopStoryVoice();
   syncTeach();
   if (window.ELAKBuddy) window.ELAKBuddy.refresh();
@@ -5273,11 +5279,16 @@ function frame(now) {
     requestAnimationFrame(frame);
     return;
   }
+  if (S.screen !== "play") {
+    S.playFrame = false;
+    return;
+  }
   const live = S.screen === "play" && !S.paused && S.questId;
   S.dt = live ? dt : 0;
   if (live) update(dt);
   if (S.screen === "play") draw();
-  requestAnimationFrame(frame);
+  if (S.screen === "play") requestAnimationFrame(frame);
+  else S.playFrame = false;
 }
 
 function pauseGame() {
@@ -5517,12 +5528,13 @@ function bootPatient() {
     refreshMeta();
   }
 }
-if (typeof pullElakStore === "function") pullElakStore().finally(bootPatient);
-else bootPatient();
+bootPatient();
+if (typeof pullElakStore === "function") {
+  pullElakStore().then(() => { refreshMeta(); }).catch(() => {});
+}
 setMode("button");
 wire();
 resize();
-requestAnimationFrame(frame);
 setInterval(() => {
   if (document.hidden) return;
   if (S.screen === "play" || S.screen === "book" || S.screen === "story") return;

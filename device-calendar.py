@@ -230,7 +230,9 @@ def serve_calendar() -> dict:
     age = 0.0
     with CACHE_LOCK:
         age = time.time() - float(CACHE.get("at") or 0)
-    if cached and (cached.get("events") or []) and age and age < 45:
+    if cached and (cached.get("events") or []):
+        if age > 25:
+            threading.Thread(target=refresh_calendar, daemon=True).start()
         return cached
     live = refresh_calendar()
     if live and live.get("ok"):
@@ -535,14 +537,8 @@ def write_calendar_events(tag: str, events: list, purge_if_empty: bool = False, 
         merge_written(tag or "elak", events or [])
         LAST_WRITE["stamp"] = stamp
         LAST_WRITE["tag"] = tag or "elak"
-        threading.Thread(target=refresh_calendar, daemon=True).start()
         return payload
-    result = write_calendar_applescript(tag, events)
-    if result.get("ok"):
-        merge_written(tag or "elak", events or [])
-        LAST_WRITE["stamp"] = stamp
-        LAST_WRITE["tag"] = tag or "elak"
-    return result
+    return {"ok": False, "source": "eventkit", "written": 0, "tag": tag or "elak", "reason": "eventkit"}
 
 
 class Handler(BaseHTTPRequestHandler):

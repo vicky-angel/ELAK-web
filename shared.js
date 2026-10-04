@@ -588,19 +588,31 @@ function applyElakStore(remote) {
 let elakStoreTimer = 0;
 let elakStoreUrl = "";
 
+async function fetchJsonTimed(url, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms || 1500);
+  try {
+    const res = await fetch(url, { cache: "no-store", signal: ctrl.signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function pullElakStore() {
-  for (const url of elakStoreUrls()) {
-    try {
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) continue;
-      const data = await res.json();
-      const remote = data && (data.store || data);
-      if (!remote || typeof remote !== "object") continue;
-      elakStoreUrl = url;
-      applyElakStore(remote);
-      schedulePushElakStore();
-      return true;
-    } catch (err) { /* try next */ }
+  const urls = (elakStoreUrl ? [elakStoreUrl] : []).concat(elakStoreUrls())
+    .filter((url, i, all) => url && all.indexOf(url) === i);
+  for (const url of urls) {
+    const wait = /githubusercontent|elak-live/i.test(url) ? 2000 : 900;
+    const data = await fetchJsonTimed(url, wait);
+    const remote = data && (data.store || data);
+    if (!remote || typeof remote !== "object") continue;
+    elakStoreUrl = url;
+    applyElakStore(remote);
+    return true;
   }
   return false;
 }

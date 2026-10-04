@@ -1523,16 +1523,11 @@ function bootClinic() {
   if (clinicUiOn()) showClinicHome();
   else showGate();
 }
-bootClinic();
-if (typeof pullElakStore === "function") {
-  pullElakStore().then(() => {
-    if (clinic.page === "home" && typeof renderClinicOwnCalendar === "function") renderClinicOwnCalendar();
-    if (clinic.page === "list" && typeof renderPatients === "function") renderPatients();
-  }).catch(() => {});
-}
+if (typeof pullElakStore === "function") pullElakStore().finally(bootClinic);
+else bootClinic();
 setInterval(() => {
   if (document.hidden || typeof pullElakStore !== "function") return;
   pullElakStore().then(() => {
     if (clinic.page === "list" && typeof renderPatients === "function") renderPatients();
   });
-}, 45000);
+}, 20000);

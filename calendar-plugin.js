@@ -485,18 +485,9 @@ async function askLocalCalendarAccess() {
   }
   return window.ELAK_CAL_LNA;
 }
-function laptopCalendarOn() {
-  try {
-    const host = String((typeof location !== "undefined" && location.host) || "");
-    const protocol = String((typeof location !== "undefined" && location.protocol) || "");
-    return protocol === "file:" || /127\.0\.0\.1|localhost|:8766\b/i.test(host);
-  } catch (err) {
-    return false;
-  }
-}
 async function fetchCalendarJson(url, ms) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms || 900);
+  const timer = setTimeout(() => ctrl.abort(), ms || 4000);
   try {
     if (/127\.0\.0\.1|localhost/i.test(String(url || ""))) await askLocalCalendarAccess();
     const opts = { cache: "no-store", signal: ctrl.signal, mode: "cors" };
@@ -512,16 +503,14 @@ async function fetchCalendarJson(url, ms) {
 }
 function calendarBridgeUrls() {
   const urls = [];
-  if (window.ELAK_CAL_URL) urls.push(window.ELAK_CAL_URL);
   try {
     if (typeof location !== "undefined" && /:(8766)\b/.test(location.host || "")) {
       urls.push(new URL("/calendar", location.origin).href);
       urls.push(new URL("/api/device-calendar", location.origin).href);
     }
   } catch (err) { /* keep listed urls */ }
-  if (laptopCalendarOn()) {
-    urls.push("http://127.0.0.1:8766/calendar", "http://localhost:8766/calendar");
-  }
+  urls.push("http://127.0.0.1:8766/calendar", "http://localhost:8766/calendar");
+  DEVICE_CAL_BRIDGES.forEach((url) => urls.push(url));
   try {
     if (typeof location !== "undefined" && location.protocol !== "file:") {
       urls.push(new URL("data/elak-calendar.json", location.href).href);
@@ -926,13 +915,12 @@ async function readDeviceCalendarBridge() {
   let shared = null;
   for (const url of calendarBridgeUrls()) {
     const live = /127\.0\.0\.1|localhost|:8766|\/api\/device-calendar/i.test(url);
-    const data = await fetchCalendarJson(url, live ? 800 : 1200);
+    const data = await fetchCalendarJson(url, live ? 8000 : 2500);
     if (!data || !Array.isArray(data.events)) continue;
     if (isSharedCalendarPack(data, url)) {
       if (!shared) shared = { data, url };
       continue;
     }
-    window.ELAK_CAL_URL = url;
     return {
       source: data.source || "device",
       syncedAt: data.syncedAt || new Date().toISOString(),
@@ -1219,8 +1207,7 @@ function reportLines(plan) {
   ].join("\n");
 }
 function laptopCalendarUrls() {
-  if (!laptopCalendarOn()) return [];
-  return ["http://127.0.0.1:8766/calendar", "http://localhost:8766/calendar"];
+  return ["http://127.0.0.1:8766/calendar", "http://localhost:8766/calendar", "/api/device-calendar"];
 }
 function laptopCalendarTag(plan) {
   return "elak:" + ((plan && (plan.username || plan.code)) || "plan");
@@ -1273,7 +1260,6 @@ function laptopEventsStamp(events, purge) {
   return (purge ? "purge|" : "") + (events || []).map((event) => (event.title || "") + "|" + (event.start || "") + "|" + (event.end || "")).join("\n");
 }
 async function pushLaptopCalendarNow(plan) {
-  if (!laptopCalendarOn()) return null;
   const clinicAll = !plan || plan === true || (plan && plan._all) || (typeof pageCalendarRole === "function" && pageCalendarRole() === "clinician");
   const events = clinicAll ? clinicLaptopCalendarEvents() : laptopCalendarEvents(plan);
   if (!events.length && !(plan && plan._purge)) return null;
@@ -1978,15 +1964,23 @@ function submitVisitNegotiate() {
 function startCalendarWatch() {
   if (window.ELAK_CAL_TIMER) return;
   pullLiveCalendar(false).then(() => {
-    if (!laptopCalendarOn()) return;
     const who = typeof pageCalendarRole === "function" ? pageCalendarRole() : "";
     syncLaptopCalendar(who === "clinician" ? { _all: true } : planForCalendarSync());
-  }).catch(() => {});
+  }).catch(() => {
+    const who = typeof pageCalendarRole === "function" ? pageCalendarRole() : "";
+    syncLaptopCalendar(who === "clinician" ? { _all: true } : planForCalendarSync());
+  });
   window.ELAK_CAL_TIMER = setInterval(() => {
     if (window.ELAK_CAL_READING) return;
     if (typeof document !== "undefined" && document.hidden) return;
-    pullLiveCalendar(false).catch(() => {});
-  }, 60000);
+    pullLiveCalendar(false).then(() => {
+      const who = typeof pageCalendarRole === "function" ? pageCalendarRole() : "";
+      syncLaptopCalendar(who === "clinician" ? { _all: true } : planForCalendarSync());
+    }).catch(() => {
+      const who = typeof pageCalendarRole === "function" ? pageCalendarRole() : "";
+      syncLaptopCalendar(who === "clinician" ? { _all: true } : planForCalendarSync());
+    });
+  }, 30000);
 }
 function wireCalendarSync(button, status, after) {
   if (!button) return;

@@ -306,28 +306,36 @@ function kaleMedicalTokens(text) {
 function kaleMatchMedical(text, entries) {
   const q = kaleMedicalTokens(text);
   const t = String(text || "").toLowerCase();
+  const glued = t.replace(/[^a-z0-9]+/g, "");
   if (!q.length) return [];
-  return (entries || []).map((row) => {
+  const generic = { the: 1, that: 1, this: 1, doing: 1, exercise: 1, exercises: 1, practice: 1, normal: 1, okay: 1, pain: 1, ankle: 1, home: 1, session: 1, felt: 1, feel: 1, feeling: 1 };
+  const mild = /mild|sore|soreness|ache|aching|dull|tired|discomfort|tender/.test(t) || /mildsore|soreness/.test(glued);
+  const sharp = /sharp|stab|catch|shoot|knife/.test(t);
+  const ranked = (entries || []).map((row) => {
     const bag = kaleMedicalTokens((row.tags || []).join(" ") + " " + (row.title || "") + " " + (row.id || ""));
     let score = 0;
     q.forEach((word) => {
-      if (word.length < 3) return;
-      if (bag.some((item) => item === word || item.startsWith(word) || word.startsWith(item))) score += 2;
-      if (String(row.answer || "").toLowerCase().indexOf(word) >= 0) score += 1;
+      if (word.length < 4 && word !== "ice" && word !== "rom") return;
+      if (generic[word]) return;
+      if (bag.some((item) => item === word || (item.length >= 4 && (item.startsWith(word) || word.startsWith(item))))) score += 4;
     });
-    if (/sharp|stab|catch/.test(t) && row.id === "sharp-pain-during-practice") score += 8;
-    if (/scale|vas|nprs|\/\s*10|out of 10/.test(t) && row.id === "pain-scale") score += 8;
-    if (/swell/.test(t) && row.id === "swelling") score += 6;
-    if (/numb|tingle/.test(t) && row.id === "numbness") score += 6;
+    if (mild && !sharp && row.id === "working-discomfort") score += 14;
+    if (sharp && row.id === "sharp-pain-during-practice") score += 14;
+    if (mild && !sharp && row.id === "sharp-pain-during-practice") score -= 12;
+    if (/scale|vas|nprs|\/\s*10|out of 10/.test(t) && row.id === "pain-scale") score += 10;
+    if (/swell/.test(t) && row.id === "swelling") score += 8;
+    if (/numb|tingle/.test(t) && row.id === "numbness") score += 8;
     return { row, score };
-  }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, 2)
-    .map((item) => ({ id: item.row.id, title: item.row.title, answer: item.row.answer }));
+  }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score);
+  const best = ranked[0];
+  if (!best) return [];
+  return [{ id: best.row.id, title: best.row.title, answer: best.row.answer }];
 }
 
 async function kaleLookupMedical(text) {
   if (!kaleMedicalDb) {
     try {
-      const res = await fetch("data/kale-medical.json?v=1", { cache: "no-store" });
+      const res = await fetch("data/kale-medical.json?v=2", { cache: "no-store" });
       const data = await res.json();
       kaleMedicalDb = (data && data.entries) || [];
     } catch (err) {
@@ -350,7 +358,11 @@ function kaleMedicalAnswer(ask, notes) {
       request: null
     };
   }
-  let say = hits.map((row) => row.answer).join(" ");
+  const hit = hits[0];
+  let say = hit.answer;
+  if (hit.id === "working-discomfort") {
+    say = "Yes — mild soreness during the exercise can be normal if it stays a dull ache, does not catch or stab, and eases within about a day. " + say;
+  }
   if (facts.lastPain != null) say += " Your last logged session was " + facts.lastPain + " / 10.";
   say += " This is from the ELAK ankle medical notes, not a diagnosis.";
   return { say, request: null };
@@ -560,6 +572,9 @@ function kaleLocalThink(ask) {
 async function kaleThink(ask, signal) {
   const medical = kaleAskingMedical(ask && ask.text) ? await kaleLookupMedical(ask.text) : [];
   const local = kaleLocalThink(Object.assign({}, ask, { medical: medical }));
+  if (kaleAskingMedical(ask && ask.text) && !kaleNeedsApproval(ask && ask.text) && local && local.say) {
+    return local;
+  }
   const body = JSON.stringify({
     side: ask.side,
     message: ask.text,
@@ -751,6 +766,24 @@ function pauseBuddyInput() {
   if (input) input.focus();
 }
 
+function scrollBuddyLog(mode) {
+  const log = document.getElementById("buddy-log");
+  if (!log) return;
+  const run = () => {
+    if (mode === "reply") {
+      const bubbles = log.querySelectorAll(".buddy-bubble.buddy:not(.typing)");
+      const last = bubbles[bubbles.length - 1];
+      if (last) {
+        const top = last.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop;
+        log.scrollTop = Math.max(0, top - 8);
+        return;
+      }
+    }
+    log.scrollTop = log.scrollHeight;
+  };
+  requestAnimationFrame(run);
+}
+
 function finishBuddyReply(say) {
   buddyUi.job = 0;
   buddyUi.abort = null;
@@ -765,7 +798,7 @@ function finishBuddyReply(say) {
     });
   }
   setBuddyBusy(false);
-  renderBuddyLog();
+  renderBuddyLog("reply");
 }
 
 async function kaleRunReply() {
@@ -828,7 +861,7 @@ function paintBuddyFace() {
   }
 }
 
-function renderBuddyLog() {
+function renderBuddyLog(mode) {
   const log = document.getElementById("buddy-log");
   if (!log) return;
   const who = currentBuddyWho();
@@ -852,7 +885,7 @@ function renderBuddyLog() {
     log.appendChild(bubble);
   });
   if (buddyUi.busy) showBuddyTyping(true);
-  log.scrollTop = log.scrollHeight;
+  scrollBuddyLog(mode || "end");
   paintBuddyDot();
   setBuddyBusy(buddyUi.busy);
   if (plan && typeof paintNotesDot === "function") paintNotesDot();

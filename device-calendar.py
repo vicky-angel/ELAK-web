@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
 import threading
 import time
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlencode
 
 PORT = int(os.environ.get("ELAK_CAL_PORT", "8766"))
 HOST = "127.0.0.1"
@@ -22,12 +20,6 @@ WRITE_PATH = os.path.join(HERE, "data", "device-calendar-write.json")
 CACHE = {"payload": None, "at": 0.0}
 CACHE_LOCK = threading.Lock()
 WATCH_SECONDS = 300
-GOOGLE_CAL_ID = os.environ.get(
-    "ELAK_GOOGLE_CALENDAR_ID",
-    "c_fe71d72e87c821b1054432f47606ddb25e9773577a6a28a48fe4c323703b26bc@group.calendar.google.com",
-)
-GOOGLE_CAL_TZ = os.environ.get("ELAK_GOOGLE_CALENDAR_TZ", "America/Los_Angeles")
-GOOGLE_STAMP = {"stamp": ""}
 
 SCRIPT = r'''
 on two(n)
@@ -468,72 +460,6 @@ def events_write_stamp(tag: str, events: list) -> str:
     return str(tag or "elak") + "|" + json.dumps(rows, ensure_ascii=False)
 
 
-def gcal_compact(raw: str) -> str:
-    match = re.match(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})", str(raw or ""))
-    if not match:
-        return ""
-    return "".join(match.groups()) + "00"
-
-
-def gcal_event_url(event: dict) -> str:
-    start = gcal_compact((event or {}).get("start"))
-    end = gcal_compact((event or {}).get("end") or (event or {}).get("start"))
-    if not start:
-        return ""
-    query = {
-        "text": (event or {}).get("title") or "ELAK",
-        "dates": start + "/" + (end or start),
-        "ctz": GOOGLE_CAL_TZ,
-        "src": GOOGLE_CAL_ID,
-        "details": (event or {}).get("notes") or "elak:clinic",
-    }
-    return "https://calendar.google.com/calendar/u/0/r/eventedit?" + urlencode(query)
-
-
-def chrome_javascript(js: str) -> str:
-    script = '''
-tell application "Google Chrome"
-  if not (exists window 1) then return "no-window"
-  tell active tab of front window
-    execute javascript %s
-  end tell
-end tell
-''' % json.dumps(js)
-    try:
-        proc = subprocess.run(["osascript", "-e", script], timeout=12, capture_output=True, text=True)
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return ""
-    return (proc.stdout or "").strip()
-
-
-def write_google_calendar(events: list, purge_if_empty: bool = False) -> dict:
-    stamp = events_write_stamp("gcal", events)
-    if events and stamp == GOOGLE_STAMP.get("stamp") and not purge_if_empty:
-        return {"ok": True, "source": "google", "written": 0, "skipped": "unchanged"}
-    written = 0
-    for event in events or []:
-        url = gcal_event_url(event)
-        if not url:
-            continue
-        try:
-            subprocess.run(["open", "-a", "Google Chrome", url], timeout=8, capture_output=True)
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            continue
-        time.sleep(2.2)
-        result = chrome_javascript(
-            "(() => { const buttons = Array.from(document.querySelectorAll('button'));"
-            " const btn = buttons.find((b) => /^(Save|儲存|保存)$/i.test((b.innerText || '').trim())"
-            " || b.getAttribute('jsname') === 'x8hlje');"
-            " if (btn) { btn.click(); return 'clicked'; }"
-            " return 'no-save'; })()"
-        )
-        if result == "clicked":
-            written += 1
-            time.sleep(1.2)
-    GOOGLE_STAMP["stamp"] = stamp
-    return {"ok": True, "source": "google", "written": written, "calendar": GOOGLE_CAL_ID}
-
-
 def write_calendar_events(tag: str, events: list, purge_if_empty: bool = False, remove_people=None) -> dict:
     removing = {str(name or "").lower().strip() for name in (remove_people or []) if str(name or "").strip()}
     ARCHIVED_PEOPLE.update(removing)
@@ -564,14 +490,12 @@ def write_calendar_events(tag: str, events: list, purge_if_empty: bool = False, 
         LAST_WRITE["stamp"] = stamp
         LAST_WRITE["tag"] = tag or "elak"
         threading.Thread(target=refresh_calendar, daemon=True).start()
-        threading.Thread(target=write_google_calendar, args=(events, purge_if_empty), daemon=True).start()
         return payload
     result = write_calendar_applescript(tag, events)
     if result.get("ok"):
         merge_written(tag or "elak", events or [])
         LAST_WRITE["stamp"] = stamp
         LAST_WRITE["tag"] = tag or "elak"
-        threading.Thread(target=write_google_calendar, args=(events, purge_if_empty), daemon=True).start()
     return result
 
 

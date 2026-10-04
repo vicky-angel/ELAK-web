@@ -1958,6 +1958,20 @@ function toLocalInput(iso) {
   const p = (n) => String(n).padStart(2, "0");
   return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes());
 }
+function clockFromValue(value, fallback) {
+  const raw = String(value || "").trim();
+  const hm = raw.match(/(\d{1,2}):(\d{2})/);
+  if (hm) return String(Number(hm[1])).padStart(2, "0") + ":" + hm[2];
+  const stamp = new Date(raw);
+  if (!Number.isNaN(stamp.getTime())) {
+    return String(stamp.getHours()).padStart(2, "0") + ":" + String(stamp.getMinutes()).padStart(2, "0");
+  }
+  return fallback || "09:00";
+}
+function slotClock(slot) {
+  if (slot && slot.start) return clockFromValue(slot.start, "09:00");
+  return "09:00";
+}
 
 async function openBook() {
   const plan = typeof ensurePatientPractice === "function" ? ensurePatientPractice(activePlan()) : activePlan();
@@ -1992,7 +2006,7 @@ function bookPickOf(slot) {
     const offerIndex = slot.start && slot.offers ? slot.offers.indexOf(slot.start) : -1;
     S.bookPicks[slot.id] = {
       choice: offerIndex >= 0 ? "offer-" + offerIndex : (slot.start ? "custom" : ""),
-      custom: slot.start ? toLocalInput(slot.start) : slot.date + "T09:00"
+      custom: slotClock(slot)
     };
   }
   return S.bookPicks[slot.id];
@@ -2946,9 +2960,10 @@ function renderBookSlots() {
   S.bookPicks = S.bookPicks || {};
   cycle.slots.forEach((slot) => {
     if (!S.bookPicks[slot.id]) {
-      S.bookPicks[slot.id] = { custom: slot.start ? toLocalInput(slot.start) : slot.date + "T09:00" };
+      S.bookPicks[slot.id] = { custom: slotClock(slot) };
     }
     const pick = S.bookPicks[slot.id];
+    pick.custom = clockFromValue(pick.custom, slotClock(slot));
     const card = document.createElement("div");
     card.className = "slot-card ok";
     const head = document.createElement("p");
@@ -2960,9 +2975,9 @@ function renderBookSlots() {
     const label = document.createElement("label");
     label.textContent = "Practice time";
     const input = document.createElement("input");
-    input.type = "datetime-local";
-    input.value = pick.custom || slot.date + "T09:00";
-    input.addEventListener("input", () => { pick.custom = input.value; });
+    input.type = "time";
+    input.value = pick.custom;
+    input.addEventListener("input", () => { pick.custom = clockFromValue(input.value, pick.custom); });
     field.append(label, input);
     card.append(head, field);
     root.appendChild(card);
@@ -2975,12 +2990,13 @@ function saveBook() {
   if (!cycle) return;
   for (const slot of cycle.slots) {
     const pick = (S.bookPicks || {})[slot.id];
-    const stamp = pick && pick.custom ? new Date(pick.custom) : (slot.start ? new Date(slot.start) : null);
-    if (!stamp || Number.isNaN(stamp.getTime())) {
+    const clock = clockFromValue(pick && pick.custom, slotClock(slot));
+    const stamp = typeof atStamp === "function" ? atStamp(slot.date, clock) : new Date(slot.date + "T" + clock).toISOString();
+    if (!stamp) {
       $("book-error").textContent = "Add a time for " + slot.date + ".";
       return;
     }
-    acceptSlot(cycle, slot.id, stamp.toISOString());
+    acceptSlot(cycle, slot.id, stamp);
   }
   cycle.sentence = ($("book-sentence").value || "").trim() || cycle.sentence;
   writeAcceptedEvents(plan, cycle);

@@ -283,14 +283,16 @@ function applyRoleCalendarsToPlan(plan, startISO, endISO) {
   if (!plan) return [];
   const window = startISO && endISO ? { start: startISO, end: endISO } : displayWindowForPlan(plan);
   const kept = (plan.calendar || []).filter((event) => event.source === "elak" || event.source === "busy");
-  const patient = expandDeviceEvents((patientCalendarOf(plan) || {}).events || [], window.start, window.end).map((event) => ({
-    source: "calendar",
-    who: "patient",
-    title: event.title,
-    start: event.start,
-    end: event.end,
-    allDay: !!event.allDay
-  }));
+  const patient = expandDeviceEvents((patientCalendarOf(plan) || {}).events || [], window.start, window.end)
+    .filter((event) => belongsToPlan(event, plan))
+    .map((event) => ({
+      source: "calendar",
+      who: "patient",
+      title: event.title,
+      start: event.start,
+      end: event.end,
+      allDay: !!event.allDay
+    }));
   const clinician = expandDeviceEvents((clinicianCalendarOf(plan) || {}).events || [], window.start, window.end).map((event) => ({
     source: "clinic",
     who: "clinician",
@@ -507,11 +509,52 @@ function filterSharedEvents(events, plan, role) {
     .filter(Boolean)
     .map((s) => String(s).toLowerCase().trim())
     .filter((s) => s.length >= 2);
-  if (!needles.length) return list.filter((event) => /elak|next visit/i.test(event.title || ""));
+  if (!needles.length) return [];
   return list.filter((event) => {
     const title = String(event.title || "").toLowerCase();
     return needles.some((n) => title.includes(n));
   });
+}
+function calendarEventKind(event) {
+  const title = String((event && event.title) || "").toLowerCase();
+  if (/next visit/.test(title)) return "visit";
+  if (/elak|ankle practice/.test(title) || (event && event.source === "elak")) return "practice";
+  return "other";
+}
+function calendarStartKey(event) {
+  const d = new Date(event && event.start);
+  if (Number.isNaN(d.getTime())) return String((event && event.start) || "");
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+function belongsToPlan(event, plan) {
+  const needles = [plan && plan.patient, plan && plan.username]
+    .filter(Boolean)
+    .map((s) => String(s).toLowerCase().trim())
+    .filter((s) => s.length >= 2);
+  const kind = calendarEventKind(event);
+  if (kind === "other") return true;
+  const named = String((event && event.title) || "").split(/[·•]/).slice(1).map((part) => part.trim().toLowerCase()).filter(Boolean);
+  if (!named.length || !needles.length) return true;
+  return named.some((part) => needles.some((n) => part.includes(n) || n.includes(part)));
+}
+function dedupeCalendarEvents(events, plan, role) {
+  const rows = (events || []).filter((event) => role === "clinician" || belongsToPlan(event, plan));
+  const seen = {};
+  const out = [];
+  rows.forEach((event) => {
+    const kind = calendarEventKind(event);
+    const key = (kind === "practice" || kind === "visit")
+      ? kind + "|" + calendarStartKey(event)
+      : String(event.title || "") + "|" + calendarStartKey(event);
+    if (seen[key]) return;
+    seen[key] = true;
+    if (kind === "practice" && plan && plan.patient) {
+      out.push(Object.assign({}, event, { title: "ELAK ankle practice · " + plan.patient }));
+    } else {
+      out.push(event);
+    }
+  });
+  return out;
 }
 function elakPlanEvents(plan) {
   const out = [];
@@ -705,16 +748,16 @@ function paintRoleCalendar(root, status, role, plan) {
   if (who === "clinician" && typeof clinicVisitEvents === "function") {
     fake.calendar = (fake.calendar || []).concat(clinicVisitEvents());
   }
-  const pack = who === "clinician" ? clinicianCalendarOf(fake) : patientCalendarOf(fake);
+  fake.calendar = dedupeCalendarEvents(fake.calendar, plan || fake, who);
   if (status) {
-    const line = calendarPackStatus(pack);
-    status.textContent = line || (elakPlanEvents(plan || fake).length ? "Showing booked practice times." : "No calendar events yet.");
+    const n = fake.calendar.length;
+    status.textContent = n ? (n + (n === 1 ? " event" : " events")) : "No calendar events yet.";
   }
   if (!window.ELAK_CAL_DAY) {
     window.ELAK_CAL_DAY = typeof dayKey === "function" ? dayKey(new Date()) : new Date().toISOString().slice(0, 10);
   }
   if (root && typeof calendarSummary === "function") {
-    const events = calendarSummary(fake, who);
+    const events = dedupeCalendarEvents(calendarSummary(fake, who), plan || fake, who);
     window.ELAK_CAL_DAY = nearestEventDay(events, window.ELAK_CAL_DAY);
     const stamp = (window.ELAK_CAL_DAY || "") + "|" + calendarEventStamp(events);
     if (root.dataset.calStamp === stamp) return;

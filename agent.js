@@ -386,10 +386,11 @@ function applyYouthCalendar(plan, startISO, endISO) {
   return applyRoleCalendarsToPlan(plan, startISO, endISO);
 }
 function calendarSummary(plan, who) {
-  return (plan.calendar || []).filter((event) => {
+  const list = (plan.calendar || []).filter((event) => {
     if (who) return event.who === who || event.who === "both" || event.source === "elak" || (who === "patient" && (event.source === "calendar" || event.source === "busy") && event.who !== "clinician");
     return event.source === "calendar" || event.source === "busy" || event.source === "clinic" || event.source === "elak";
   });
+  return typeof dedupeCalendarEvents === "function" ? dedupeCalendarEvents(list, plan, who) : list;
 }
 function clockOf(iso) {
   const d = new Date(iso);

@@ -241,7 +241,7 @@ def serve_calendar() -> dict:
 def watch_calendar() -> None:
     while True:
         refresh_calendar()
-        wanted = combined_elak_events()
+        wanted = drop_archived_events(POSTED_ELAK.get("events") or [])
         if wanted:
             write_calendar_events("elak:clinic", wanted, False)
         time.sleep(WATCH_SECONDS)
@@ -409,32 +409,47 @@ def purge_elak_events() -> None:
 
 LAST_WRITE = {"stamp": "", "tag": ""}
 POSTED_ELAK = {"events": []}
-ELAK_JSON = os.path.join(HERE, "data", "elak-calendar.json")
+ARCHIVED_PEOPLE = set()
+POSTED_PATH = os.path.join(HERE, "data", "device-calendar-posted.json")
+ARCHIVED_PATH = os.path.join(HERE, "data", "device-calendar-archived.json")
 
 
-def elak_file_events() -> list:
+def load_posted_state() -> None:
     try:
-        with open(ELAK_JSON, encoding="utf-8") as handle:
+        with open(POSTED_PATH, encoding="utf-8") as handle:
             data = json.load(handle)
+        if isinstance(data, dict) and isinstance(data.get("events"), list):
+            POSTED_ELAK["events"] = unique_write_events(data.get("events") or [])
     except (OSError, json.JSONDecodeError):
-        return []
-    out = []
-    for event in (data.get("events") or []) if isinstance(data, dict) else []:
-        title = str((event or {}).get("title") or "")
-        start = (event or {}).get("start")
-        if not start or not any(token in title.lower() for token in ("elak", "next visit")):
-            continue
-        out.append({
-            "title": title,
-            "start": start,
-            "end": (event or {}).get("end") or start,
-            "notes": "elak:shared",
-        })
-    return unique_write_events(out)
+        pass
+    try:
+        with open(ARCHIVED_PATH, encoding="utf-8") as handle:
+            data = json.load(handle)
+        names = data.get("people") if isinstance(data, dict) else data
+        if isinstance(names, list):
+            ARCHIVED_PEOPLE.update(str(name).lower().strip() for name in names if str(name).strip())
+    except (OSError, json.JSONDecodeError):
+        pass
 
 
-def combined_elak_events(extra=None) -> list:
-    return unique_write_events(list(POSTED_ELAK.get("events") or []) + elak_file_events() + list(extra or []))
+def save_posted_state() -> None:
+    try:
+        os.makedirs(os.path.dirname(POSTED_PATH), exist_ok=True)
+        with open(POSTED_PATH, "w", encoding="utf-8") as handle:
+            json.dump({"events": POSTED_ELAK.get("events") or []}, handle)
+        with open(ARCHIVED_PATH, "w", encoding="utf-8") as handle:
+            json.dump({"people": sorted(ARCHIVED_PEOPLE)}, handle)
+    except OSError:
+        return
+
+
+def title_matches_people(title: str, people) -> bool:
+    blob = str(title or "").lower()
+    return any(name and name in blob for name in people)
+
+
+def drop_archived_events(events: list) -> list:
+    return [event for event in unique_write_events(events) if not title_matches_people((event or {}).get("title"), ARCHIVED_PEOPLE)]
 
 
 def events_write_stamp(tag: str, events: list) -> str:
@@ -445,10 +460,18 @@ def events_write_stamp(tag: str, events: list) -> str:
     return str(tag or "elak") + "|" + json.dumps(rows, ensure_ascii=False)
 
 
-def write_calendar_events(tag: str, events: list, purge_if_empty: bool = False) -> dict:
-    if events:
-        POSTED_ELAK["events"] = unique_write_events(events)
-    events = combined_elak_events(events)
+def write_calendar_events(tag: str, events: list, purge_if_empty: bool = False, remove_people=None) -> dict:
+    removing = {str(name or "").lower().strip() for name in (remove_people or []) if str(name or "").strip()}
+    ARCHIVED_PEOPLE.update(removing)
+    incoming = unique_write_events(events)
+    for event in incoming:
+        title = str((event or {}).get("title") or "").lower()
+        for name in list(ARCHIVED_PEOPLE):
+            if name and name in title and name not in removing:
+                ARCHIVED_PEOPLE.discard(name)
+    events = drop_archived_events(incoming)
+    POSTED_ELAK["events"] = events
+    save_posted_state()
     stamp = events_write_stamp(tag, events)
     if events and stamp == LAST_WRITE.get("stamp") and not purge_if_empty:
         return {"ok": True, "source": "eventkit", "written": 0, "tag": tag or "elak", "skipped": "unchanged"}
@@ -573,7 +596,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send({"ok": False, "reason": "missing-events"}, 400)
             return
         tag = str(payload.get("tag") or payload.get("id") or "elak")
-        self._send(write_calendar_events(tag, events, bool(payload.get("purgeIfEmpty") or payload.get("replaceElak") and not events)))
+        remove = payload.get("removePeople") or payload.get("remove") or []
+        if not isinstance(remove, list):
+            remove = [remove]
+        self._send(write_calendar_events(
+            tag,
+            events,
+            bool(payload.get("purgeIfEmpty") or payload.get("replaceElak") and not events),
+            remove,
+        ))
 
 
 def load_live_cache() -> None:
@@ -595,6 +626,7 @@ def main():
     print("ELAK device calendar on http://%s:%s/calendar" % (HOST, PORT), flush=True)
     print("Open clinician calendar at http://%s:%s/clinician.html" % (HOST, PORT), flush=True)
     load_live_cache()
+    load_posted_state()
     threading.Thread(target=watch_calendar, daemon=True).start()
     try:
         server.serve_forever()

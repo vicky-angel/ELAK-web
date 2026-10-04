@@ -622,9 +622,33 @@ function clinicNextVisitEvents() {
   return out;
 }
 const GHOST_CAL_PEOPLE = [
-  "sebastian korda", "longsha", "taylor fritz", "elsa", "nofear", "life",
+  "sebastian korda", "longsha", "elsa", "nofear", "life",
   "tab check", "cycle check", "alex test", "injury check", "calendar two"
 ];
+function planNameNeedles(plan) {
+  return [plan && plan.patient, plan && plan.username]
+    .map((value) => String(value || "").toLowerCase().trim())
+    .filter((value) => value.length >= 2);
+}
+function archivedPatientNeedles() {
+  if (typeof loadPlans !== "function") return [];
+  const data = loadPlans();
+  const out = [];
+  Object.values((data && data.plans) || {}).forEach((plan) => {
+    if (!plan || !plan.archived) return;
+    planNameNeedles(plan).forEach((name) => {
+      if (out.indexOf(name) < 0) out.push(name);
+    });
+  });
+  return out;
+}
+function eventMatchesNeedles(event, needles) {
+  const names = needles || [];
+  if (!names.length) return false;
+  const title = String((event && event.title) || "").toLowerCase();
+  const person = eventPerson(event);
+  return names.some((n) => title.includes(n) || person === n || (person && (person.includes(n) || n.includes(person))));
+}
 function isGhostCalendarPerson(event) {
   if (calendarEventKind(event) === "other") return false;
   const person = eventPerson(event);
@@ -634,20 +658,22 @@ function isGhostCalendarPerson(event) {
     return title.indexOf(" · " + name) >= 0 || title.endsWith(name);
   });
 }
+function isArchivedCalendarPerson(event) {
+  if (calendarEventKind(event) === "other") return false;
+  return eventMatchesNeedles(event, archivedPatientNeedles());
+}
 function eventBelongsToClinician(event) {
-  if (isGhostCalendarPerson(event)) return false;
+  if (isGhostCalendarPerson(event) || isArchivedCalendarPerson(event)) return false;
   const kind = calendarEventKind(event);
   if (kind === "other") return true;
   const needles = clinicianPatientNeedles();
   const plans = clinicianCalendarPlans();
-  const title = String((event && event.title) || "").toLowerCase();
+  if (eventMatchesNeedles(event, needles)) return true;
   const person = eventPerson(event);
-  if (needles.some((n) => title.includes(n) || person === n || (person && (person.includes(n) || n.includes(person))))) return true;
   if ((kind === "visit" || kind === "practice") && needles.length === 1 && !person) return true;
   if (kind === "visit") {
-    if (plans.some((plan) => plan && plan.appointment && calendarStartKey({ start: plan.appointment.start }) === calendarStartKey(event))) return true;
+    return plans.some((plan) => plan && plan.appointment && calendarStartKey({ start: plan.appointment.start }) === calendarStartKey(event));
   }
-  if (!needles.length) return kind === "visit" || kind === "practice";
   return false;
 }
 function isoLocal(value) {
@@ -1226,11 +1252,17 @@ async function pushLaptopCalendarNow(plan) {
     return null;
   }
   window.ELAK_CAL_WRITING = true;
+  const removePeople = []
+    .concat(typeof archivedPatientNeedles === "function" ? archivedPatientNeedles() : [])
+    .concat(plan && plan._remove ? plan._remove : [])
+    .map((name) => String(name || "").toLowerCase().trim())
+    .filter((name, i, all) => name.length >= 2 && all.indexOf(name) === i);
   const payload = {
     tag: clinicAll ? "elak:clinic" : laptopCalendarTag(plan),
     events: events,
     replaceElak: true,
-    purgeIfEmpty: !!(plan && plan._purge)
+    purgeIfEmpty: !!(plan && plan._purge) || !events.length,
+    removePeople: removePeople
   };
   try {
     for (const url of laptopCalendarUrls()) {
@@ -1279,9 +1311,12 @@ function removePatientFromCalendars(plan) {
   ["clinician", "patient"].forEach((role) => {
     const pack = typeof loadRoleCalendar === "function" ? loadRoleCalendar(role) : null;
     if (!pack || !Array.isArray(pack.events)) return;
-    pack.events = pack.events.filter((event) => !eventIsForPlan(event, plan));
+    pack.events = pack.events.filter((event) => calendarEventKind(event) === "other" || !eventIsForPlan(event, plan));
     saveRoleCalendar(role, pack);
   });
+  if (window.ELAK_SHARED_CAL && Array.isArray(window.ELAK_SHARED_CAL.events)) {
+    window.ELAK_SHARED_CAL.events = window.ELAK_SHARED_CAL.events.filter((event) => !eventIsForPlan(event, plan));
+  }
   plan.calendar = (plan.calendar || []).filter((event) => event.source !== "elak");
   plan.appointment = null;
   if (plan.cycle && Array.isArray(plan.cycle.slots)) {
@@ -1294,7 +1329,11 @@ function removePatientFromCalendars(plan) {
       savePlans(data);
     }
   }
-  pushLaptopCalendar({ _all: true, _purge: true }).catch(() => {});
+  pushLaptopCalendar({
+    _all: true,
+    _purge: true,
+    _remove: planNameNeedles(plan)
+  }).catch(() => {});
 }
 function syncLaptopCalendar(plan) {
   if (typeof pageCalendarRole === "function" && pageCalendarRole() === "clinician") {

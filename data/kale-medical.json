@@ -1,0 +1,91 @@
+{
+  "name": "ELAK ankle rehab medical notes",
+  "kind": "simple-lookup",
+  "disclaimer": "Education from the ELAK ankle notes. Not a diagnosis.",
+  "entries": [
+    {
+      "id": "sharp-pain-during-practice",
+      "tags": ["sharp", "stab", "stabbing", "catch", "catching", "knife", "shooting", "pain", "practice", "exercise", "normal", "ok", "okay"],
+      "title": "Sharp pain during ankle practice",
+      "answer": "Sharp, stabbing, or catching pain while you move the ankle is not counted as normal training discomfort. Stop that exercise, keep the ankle still, and do not push through it. Mild stretch or muscle tiredness is different. If the sharp feeling comes back, the ankle swells, or it gives way, pause home practice and tell your clinician."
+    },
+    {
+      "id": "working-discomfort",
+      "tags": ["sore", "soreness", "ache", "aching", "tired", "burn", "dull", "discomfort", "normal", "ok"],
+      "title": "Working discomfort versus injury pain",
+      "answer": "A dull ache or muscle tiredness that stays low, does not catch, and eases within about a day is often working load on healing tissue. Pain that is sharp, rises during the set, or lasts into the next day with more swelling is treated as too much load. Ease the range or stop and note it for your clinician."
+    },
+    {
+      "id": "pain-scale",
+      "tags": ["scale", "vas", "nprs", "score", "rating", "/10", "out of 10", "number"],
+      "title": "0 to 10 pain score",
+      "answer": "Home notes use a 0–10 pain score. 0 is none, 1–3 mild, 4–6 moderate, 7–10 severe. Ankle home practice is meant to stay in the mild band and settle. A jump of two or more points from your last session, or any score with sharp catching, is a reason to stop that movement and report it."
+    },
+    {
+      "id": "swelling",
+      "tags": ["swell", "swelling", "puff", "puffy", "edema", "tight shoe"],
+      "title": "Swelling after practice",
+      "answer": "New or increasing swelling after a set means the joint took more load than it could clear. Stop further practice that day, rest and elevate the ankle, and skip the next bout if the puffiness is still there. Recurring swelling after usual exercises should go to your clinician."
+    },
+    {
+      "id": "numbness",
+      "tags": ["numb", "numbness", "tingle", "tingling", "pins", "needles"],
+      "title": "Numbness or tingling",
+      "answer": "Numbness, pins and needles, or a dead feeling in the foot during or after practice is a stop sign, not a stretch. End the exercise, take the load off the ankle, and do not keep going to 'work through it'. Tell your clinician if it happens more than once."
+    },
+    {
+      "id": "stiffness",
+      "tags": ["stiff", "stiffness", "tight", "morning", "warm up"],
+      "title": "Stiffness",
+      "answer": "Morning stiffness that eases after a few gentle pumps is common in ankle rehab. Stiffness that comes with sharp pain, locking, or swelling that will not warm up is not treated as simple tightness. Use a smaller range and stop if motion catches."
+    },
+    {
+      "id": "pain-after-24h",
+      "tags": ["next day", "tomorrow", "24", "hours", "later", "worse tomorrow", "next morning"],
+      "title": "Pain that lasts past the next day",
+      "answer": "Load that is reasonable usually settles within about 24 hours. If pain, limp, or swelling is worse the next morning, that bout was too hard. Rest, do not add extra sets, and tell your clinician before you progress."
+    },
+    {
+      "id": "giving-way",
+      "tags": ["give way", "gave way", "unstable", "wobble", "roll", "twist", "buckle"],
+      "title": "Ankle giving way",
+      "answer": "A giving-way or rolling feeling means the ankle is not stable enough for that task. Stop single-leg or fast work, sit if you need to, and keep to supported practice until a clinician reviews it. Do not test the ankle by repeating the same move."
+    },
+    {
+      "id": "clicking",
+      "tags": ["click", "clicking", "pop", "clunk", "catch"],
+      "title": "Clicking or popping",
+      "answer": "A painless click can happen as tendons slide. A painful pop, clunk, or catch that stops the motion is a stop sign. Do not force the range. Write down which move caused it and tell your clinician."
+    },
+    {
+      "id": "when-to-stop",
+      "tags": ["stop", "should i stop", "keep going", "push through", "safe"],
+      "title": "When to stop a set",
+      "answer": "Stop the set if you feel sharp pain, catching, new swelling, numbness, or the ankle giving way. Gentle tiredness in the muscles is not a reason to stop by itself. The home rule is: pain-free or mild only, and never push a sharp joint signal."
+    },
+    {
+      "id": "ice-heat",
+      "tags": ["ice", "heat", "warm", "cold", "pack"],
+      "title": "Ice or heat",
+      "answer": "After a bout that leaves the ankle warm or puffy, a short cold pack on cloth can settle swelling. Heat is for stiffness without new swelling, not for a hot or sharp joint. Do not sleep on a pack, and do not use either as a way to hide pain so you can do more reps."
+    },
+    {
+      "id": "sprain-load",
+      "tags": ["sprain", "ligament", "rolled", "twist", "heal"],
+      "title": "Ligament load after a sprain",
+      "answer": "After a sprain, ligaments take load slowly. Early home work is small, repeated, and kept below a sharp pain line so the tissue can stiffen again. Doing more because it 'only aches a little' is how swelling and giving-way return. Follow the prescribed set, not extra volume."
+    },
+    {
+      "id": "post-op",
+      "tags": ["surgery", "post-op", "operated", "fracture", "screw", "plate"],
+      "title": "After surgery or fracture",
+      "answer": "After fixation or repair, sharp pain, new swelling, calf tightness, or wound heat is not normal training load. Stop, protect the ankle, and contact your clinician. Only the exercises already on your visit plan should be done at home."
+    },
+    {
+      "id": "range-of-motion",
+      "tags": ["range", "rom", "point", "flex", "alphabet", "pump", "motion"],
+      "title": "Pain when pointing or moving through range",
+      "answer": "Pain at the end of pointing or circling the foot is common if you force the last degrees. Stay in the range that does not catch. Alphabet and pump drills should look like small, smooth motion, not a stretch contest. Sharp pain at one point in the arc means stop that direction."
+    }
+  ]
+}

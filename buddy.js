@@ -296,43 +296,62 @@ function kalePainLog(plan) {
   };
 }
 
-function kaleSpokenScore(text) {
-  const m = String(text || "").toLowerCase().match(/\b(10|[0-9])(?:\s*(?:\/\s*10|out of 10|on the (?:pain )?scale))?\b/);
-  return m ? Number(m[1]) : null;
+let kaleMedicalDb = null;
+
+function kaleMedicalTokens(text) {
+  return String(text || "").toLowerCase().match(/[a-z0-9+/]+/g) || [];
 }
 
-function kalePainBand(n) {
-  if (n == null || Number.isNaN(n)) return "";
-  if (n <= 0) return "no pain";
-  if (n <= 3) return "mild";
-  if (n <= 6) return "moderate";
-  if (n <= 9) return "severe";
-  return "the top of the scale";
-}
-
-function kaleAskingPainInfo(text) {
+function kaleMatchMedical(text, entries) {
+  const q = kaleMedicalTokens(text);
   const t = String(text || "").toLowerCase();
-  const aboutPain = /pain|sore|hurt|aching|ache|vas|scale|swelling|numb|stiff|irritab|\/\s*10|out of 10/.test(t);
-  if (!aboutPain) return false;
-  return !/reschedule|postpone|skip|reduce|fewer|next week|week after|can't (keep|do|train)|cannot (keep|do|train)|don't want to (do|train)|cancel/.test(t);
+  if (!q.length) return [];
+  return (entries || []).map((row) => {
+    const bag = kaleMedicalTokens((row.tags || []).join(" ") + " " + (row.title || "") + " " + (row.id || ""));
+    let score = 0;
+    q.forEach((word) => {
+      if (word.length < 3) return;
+      if (bag.some((item) => item === word || item.startsWith(word) || word.startsWith(item))) score += 2;
+      if (String(row.answer || "").toLowerCase().indexOf(word) >= 0) score += 1;
+    });
+    if (/sharp|stab|catch/.test(t) && row.id === "sharp-pain-during-practice") score += 8;
+    if (/scale|vas|nprs|\/\s*10|out of 10/.test(t) && row.id === "pain-scale") score += 8;
+    if (/swell/.test(t) && row.id === "swelling") score += 6;
+    if (/numb|tingle/.test(t) && row.id === "numbness") score += 6;
+    return { row, score };
+  }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, 2)
+    .map((item) => ({ id: item.row.id, title: item.row.title, answer: item.row.answer }));
 }
 
-function kalePainAnswer(ask) {
-  const facts = kaleFacts(ask && ask.plan);
-  const spoken = kaleSpokenScore(ask && ask.text);
-  const n = spoken != null ? spoken : facts.lastPain;
-  const band = kalePainBand(n);
-  let say = "ELAK scores ankle symptoms on a 0–10 numeric pain rating scale (NPRS), the same idea as a visual analogue scale (VAS). 0 is no pain, 1–3 mild, 4–6 moderate, 7–9 severe, and 10 is the worst imaginable. ";
-  if (n != null) say += "A score of " + n + " / 10 is " + band + ". ";
-  if (facts.lastPain != null) {
-    say += "Your last logged session was " + facts.lastPain + " / 10";
-    if (facts.lastMobility != null) say += ", mobility " + facts.lastMobility + " / 10";
-    if (facts.lastPainDate) say += " on " + facts.lastPainDate;
-    say += facts.lastPainStop ? ", and you stopped for pain. " : ". ";
+async function kaleLookupMedical(text) {
+  if (!kaleMedicalDb) {
+    try {
+      const res = await fetch("data/kale-medical.json?v=1", { cache: "no-store" });
+      const data = await res.json();
+      kaleMedicalDb = (data && data.entries) || [];
+    } catch (err) {
+      kaleMedicalDb = [];
+    }
   }
-  say += "In ankle rehab, working discomfort that stays about 0–3 / 10 and settles within 24 hours is usually tissue load you can keep. Sharp, catching, or rising pain, new swelling, or numbness is a stop sign";
-  say += facts.painRule ? " — " + facts.painRule : ".";
-  say += " That is technical education from your notes, not a diagnosis. If the score is climbing or you need the week moved, say so and I will ask your clinician.";
+  return kaleMatchMedical(text, kaleMedicalDb);
+}
+
+function kaleAskingMedical(text) {
+  return /pain|sore|hurt|ache|vas|scale|swell|numb|stiff|sprain|strain|inflam|ice|heat|bruise|ligament|tendon|normal|safe|worry|rom|range|click|catch|give way|unstable|tingle|pop|point/.test(String(text || "").toLowerCase());
+}
+
+function kaleMedicalAnswer(ask, notes) {
+  const hits = (notes && notes.length) ? notes : kaleMatchMedical(ask && ask.text, kaleMedicalDb || []);
+  const facts = kaleFacts(ask && ask.plan);
+  if (!hits.length) {
+    return {
+      say: "I do not have a matching note in the ankle medical list for that. Stop if it is sharp, swollen, or numb, and ask your clinician if it keeps happening.",
+      request: null
+    };
+  }
+  let say = hits.map((row) => row.answer).join(" ");
+  if (facts.lastPain != null) say += " Your last logged session was " + facts.lastPain + " / 10.";
+  say += " This is from the ELAK ankle medical notes, not a diagnosis.";
   return { say, request: null };
 }
 
@@ -356,9 +375,9 @@ function kaleApiUrls() {
 
 function kaleNeedsApproval(text) {
   const t = String(text || "").toLowerCase();
-  if (kaleAskingPainInfo(t)) return false;
-  const hardship = /tired|period|menstrual|cramp|sick|ill|unwell|fatigue|pain|sore|hurt|nause|dizzy|bleed|cannot|can't|cant|too much|overwhelmed/.test(t);
   const change = /reschedule|postpone|push|delay|week after|next week|skip|reduce|fewer|less|only \d|rest week|move (the )?(week|plan|exercises)/.test(t);
+  if (kaleAskingMedical(t) && !change) return false;
+  const hardship = /tired|period|menstrual|cramp|sick|ill|unwell|fatigue|pain|sore|hurt|nause|dizzy|bleed|cannot|can't|cant|too much|overwhelmed/.test(t);
   return change || (hardship && /exercise|practice|plan|week|session|today|tomorrow/.test(t));
 }
 
@@ -454,7 +473,7 @@ function kaleLocalThink(ask) {
   if (buddyGreetingOnly(t)) {
     return { say: "Hi, I am Kale. I can remind you about today's practice, explain a pain score, or send a change request to your clinician if you need the week moved or reduced.", request: null };
   }
-  if (kaleAskingPainInfo(raw)) return kalePainAnswer(ask);
+  if (kaleAskingMedical(raw) && !kaleNeedsApproval(raw)) return kaleMedicalAnswer(ask, ask.medical);
   if (kaleNeedsApproval(raw)) {
     const draft = kaleDraftRequest(plan, raw);
     const names = facts.exercises.length ? facts.exercises.join(", ") : "your ankle set";
@@ -492,11 +511,13 @@ function kaleLocalThink(ask) {
 }
 
 async function kaleThink(ask, signal) {
-  const local = kaleLocalThink(ask);
+  const medical = kaleAskingMedical(ask && ask.text) ? await kaleLookupMedical(ask.text) : [];
+  const local = kaleLocalThink(Object.assign({}, ask, { medical: medical }));
   const body = JSON.stringify({
     side: ask.side,
     message: ask.text,
     context: kaleFacts(ask.plan),
+    medical: medical,
     history: (buddyUi.lines || []).slice(-8).map((row) => ({ role: row.role, text: row.text }))
   });
   for (const url of kaleApiUrls()) {
@@ -877,7 +898,7 @@ function paintBuddyChips() {
   const side = buddySide();
   const chips = side === "clinic"
     ? ["What is today?", "Only 4 days a week", "Send a reminder"]
-    : ["What is today?", "What does a 6 on the pain scale mean?", "Friday at 4pm"];
+    : ["What is today?", "I have sharp pain during practice", "Friday at 4pm"];
   chips.forEach((label) => {
     const btn = document.createElement("button");
     btn.type = "button";
